@@ -42,7 +42,7 @@ from tf_agents.trajectories import time_step as ts
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.metrics import tf_metric
 from tf_agents.metrics import tf_metrics
-
+import shelve
 
 fail_reward = 0
 success_reward = 1
@@ -55,7 +55,9 @@ max_nf_cpu = 3.75*2     # max nf_bw*rec_coef
 max_nf_delay = 10.0
 wait_time = 50
 sfc_nums = 1000
-network = sfcsim.cernnet2_sfc_dynamic(num_sfc = sfc_nums)
+network_file = shelve.open("./network_file/network")
+network = network_file["cernnet2_1"]
+network_file.close()
 
 class NFVEnv(py_environment.PyEnvironment):
 

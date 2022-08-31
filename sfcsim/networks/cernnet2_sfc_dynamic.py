@@ -1,9 +1,9 @@
 from sfcsim.classes.network import *
 from sfcsim.classes.sfc import *
 from sfcsim.layout.cernnet2_layout import *
-
 import random
 from random import choice
+
 
 
 def calculate_profit(bandwidth, vnf_of_sfc, duration, vnf_types):
@@ -21,7 +21,8 @@ def make_start_times_list(num_sfc):
     return sorted(start_times_list)
 
 class cernnet2_sfc_dynamic(network):
-    def __init__(self, num_sfc=100):
+    def __init__(self, num_sfc = 100, network_name = "cernnet2"):
+        self.name = network_name
         self.node1=node(uuid='node1',atts={'cpu':10,'access':False})
         self.node2=node(uuid='node2',atts={'cpu':10,'access':False})
         self.node3=node(uuid='node3',atts={'cpu':10,'access':False})
