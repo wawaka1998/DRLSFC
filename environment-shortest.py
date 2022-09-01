@@ -44,6 +44,7 @@ from tf_agents.metrics import tf_metric
 from tf_agents.metrics import tf_metrics
 import shelve
 
+
 fail_reward = 0
 success_reward = 1
 scheduler_log = False
@@ -98,7 +99,7 @@ class NFVEnv(py_environment.PyEnvironment):
         return self._observation_spec
 
     def _next_sfc(self):
-        # 部署下一组sfc
+        # 为部署下一组sfc做好准备
         self._sfc_index += 1
         self._sfc_proc = self.network.sfcs.sfcs[self._sfc_index]  # processing sfc
         start_time = self._sfc_proc.get_atts()['start_time']
@@ -106,7 +107,7 @@ class NFVEnv(py_environment.PyEnvironment):
         # 超过等待时间的不部署
         while not self._time <= start_time + wait_time:
             if self._sfc_index == self.network.sfcs.get_number():
-                return self.reset()
+                return self._end_and_reset()
             self._sfc_index += 1  # 可以跟上一句换换位置，然后就能去掉下面的try except了
             try:
                 self._sfc_proc = self.network.sfcs.sfcs[self._sfc_index]  # processing sfc
@@ -126,7 +127,6 @@ class NFVEnv(py_environment.PyEnvironment):
         self._generate_state()
 
     def _reset(self, full_reset=False):
-        print('Deployed {} / {}, clearing'.format(self._sfc_deployed, self.network.sfcs.get_number()))
         self._dep_percent = self._sfc_deployed / self.network.sfcs.get_number()
         # self.scheduler.show()
         self._time = 0
@@ -134,7 +134,8 @@ class NFVEnv(py_environment.PyEnvironment):
         self._p = nx.shortest_path(self.network.G, weight='delay')          #所有节点到所有节点的最短路径集合
         self._delay_list = dict(nx.shortest_path_length(self.network.G, weight='delay')) #所有最短路径的权值集合
         self._sfc_index = 0
-        self._sfc_proc = self.network.sfcs.sfcs[self._sfc_index]  # processing sfc
+        self._sfc_proc = self.network.sfcs.sfcs[self._sfc_index]
+        self.scheduler = sfcsim.shortest_path_scheduler(log=scheduler_log)
         self._sfc_in_node = self._sfc_proc.get_in_node()
         self._sfc_out_node = self._sfc_proc.get_out_node()
         self._sfc_bw = self._sfc_proc.get_bandwidths()
@@ -151,7 +152,7 @@ class NFVEnv(py_environment.PyEnvironment):
         self._time += 1
         self._remove_sfc_run_out()
         if self._dep_fin:
-            return self.reset()
+            return self._end_and_reset()
         # 本次_step内,会把这个sfc部署完成
         while(True):
             if not self.scheduler.deploy_sfc(self.network,self._sfc_proc,self._p,self._delay_list,self._sfc_proc.get_vnf_types()):
@@ -176,8 +177,6 @@ class NFVEnv(py_environment.PyEnvironment):
                     self._expiration_table[expiration_time] = []
                 self._expiration_table[expiration_time].append(self._sfc_proc)
                 self._sfc_deployed += 1
-
-
                 if (self._sfc_index == self._num_sfc - 1):
                     print('正常部署这里结束的')
                     print(self._sfc_index)
@@ -189,6 +188,17 @@ class NFVEnv(py_environment.PyEnvironment):
                     #  为处理下一条sfc做好准备
                     self._next_sfc()
                     return this_time_step
+
+    def _record_sfc_deployed(self):
+        f = open('log.txt', 'a')
+        f.write(self._sfc_proc.id + "\n")
+        if(self._sfc_index == self._num_sfc - 1):
+            f.write("这一轮一共部署的sfc条数为：" + str(self._sfc_deployed) + "\n")
+        f.close()
+
+    def _end_and_reset(self):
+        print('Deployed {} / {}, clearing'.format(self._sfc_deployed, self.network.sfcs.get_number()))
+        return self.reset()
 
     def get_info(self):
         return {
