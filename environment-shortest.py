@@ -10,12 +10,8 @@ import tensorflow_probability as tfp
 import networkx as nx
 import numpy as np
 import tf_agents.metrics.tf_metrics
-
 import sfcsim
-
-
 from datetime import datetime
-
 from tf_agents.environments import py_environment
 from tf_agents.environments import tf_environment
 from tf_agents.environments import tf_py_environment
@@ -31,7 +27,6 @@ from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.policies import py_policy
 from tf_agents.policies import random_py_policy
 from tf_agents.policies import scripted_py_policy
-
 from tf_agents.policies import tf_policy
 from tf_agents.policies import random_tf_policy
 from tf_agents.policies import epsilon_greedy_policy
@@ -43,6 +38,7 @@ from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.metrics import tf_metric
 from tf_agents.metrics import tf_metrics
 import shelve
+from util import output
 
 
 fail_reward = 0
@@ -202,6 +198,7 @@ class NFVEnv(py_environment.PyEnvironment):
 
     def get_info(self):
         return {
+            'sfc_deployed':self._sfc_deployed,
             'dep_fin': self._dep_fin,
             'dep_percent': self._dep_percent
         }
@@ -339,10 +336,10 @@ if __name__ == '__main__':
     # initial collect data
     time_step = init_env.reset()
     step = 0
-    while step < 5000 or not time_step.is_last():
+    while step < 300 or not time_step.is_last():
         step += 1
         time_step, _ = initial_collect_op.run(time_step)#最开始先用随机策略收集一些
-    # print(replay_buffer.num_frames())
+    print(replay_buffer.num_frames())
     dataset = replay_buffer.as_dataset(
         num_parallel_calls=num_parallel_calls,
         sample_batch_size=batch_size,
@@ -369,7 +366,6 @@ if __name__ == '__main__':
     )
 
     train_policy_saver = policy_saver.PolicySaver(agent.policy)
-
     train_checkpoint.initialize_or_restore()
 
     # main training loop
@@ -378,35 +374,30 @@ if __name__ == '__main__':
         total_reward = 0
         step_of_episode = 0
         num_deployed = 0
-        for itr in range(num_sfc):
-            time_step = train_env.current_time_step()
-            #部署所有sfc
-            while not time_step.is_last():
-                # 部署一条sfc
-                # Collect a few steps and save to the replay buffer.
-                time_step, _ = train_driver.run(time_step)
-                # Sample a batch of data from the buffer and update the agent's network.
-                trajectories, _ = next(iterator)
-                train_loss = agent.train(trajectories).loss
-                total_loss += train_loss
-                total_reward += time_step.reward.numpy()[0]
-                step_of_episode += 1
-
+        time_step = train_env.current_time_step()
+        #部署所有sfc
+        while not time_step.is_last(): #错误原因：is_last改为了全部部署完才算，所以出错了
+            # 部署一条sfc
+            # Collect a few steps and save to the replay buffer.
+            time_step, _ = train_driver.run(time_step)
+            # Sample a batch of data from the buffer and update the agent's network.
+            trajectories, _ = next(iterator)
+            train_loss = agent.train(trajectories).loss
+            total_loss += train_loss
+            total_reward += time_step.reward.numpy()[0]
+            step_of_episode += 1
             num_deployed +=1
-            train_env.reset()
-            info = train_env.pyenv.get_info()
             if train_env.pyenv.get_info()['dep_fin'][0]:
                 break
-
         # save this episode's data
         train_checkpoint.save(train_step_counter)
-
         if episode % log_interval == 0:
             print('Episode {}, step of this episode: {}, total step: {} ,episode total reward: {}, loss: {}'.format(episode, step_of_episode, agent.train_step_counter.numpy(),total_reward, total_loss / step))
-            tf.summary.scalar('episode total reward', total_reward, step=episode)
-            tf.summary.scalar('episode deployed percent', train_env.pyenv.get_info()['dep_percent'][0], step=episode)
-
-    train_policy_saver.save(policy_dir)
+            output('8.20','A',str(episode+3),episode)
+            info = train_env.pyenv.get_info()
+            output('8.20','E',str(episode+3),train_env.pyenv.get_info()['sfc_deployed'][0])
+        train_env.reset()
+    #train_policy_saver.save(policy_dir)
 
     def compute_avg_return(environment, policy, num_episodes=10):
 
