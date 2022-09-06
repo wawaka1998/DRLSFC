@@ -157,6 +157,7 @@ class scheduler():
         else:
             self.__records[sfc_id]={'node':{j:nodes},'edge':{}}
     def deploy_link(self,sfc,j,network,nodes):
+        #j代表要部署的是这个sfc上部署的第几个node
         lens=len(nodes)
         datas=[]
         if(j not in self.__records[sfc.get_id()]['edge']):
