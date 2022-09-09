@@ -177,9 +177,11 @@ class NFVEnv(py_environment.PyEnvironment):
             if self._time > self._sfc_proc.get_atts()['start_time'] + wait_time:
                 self._episode_ended = True
                 self._generate_state()
-                return ts.transition(self._state, reward=fail_reward)
+                return ts.transition(self._state, reward = fail_reward)
             else:
                 self._sfc_state_refresh()#重新开始部署这条sfc
+                self._generate_state()
+                return ts.transition(self._state, reward = 0)
 
         if(self._deploy_node() == False or self._deploy_link(self._sfc_proc,self._vnf_index + 1,path) == False):
             self._generate_state()
@@ -194,8 +196,8 @@ class NFVEnv(py_environment.PyEnvironment):
             return ts.transition(self._state, reward=0.0)
 
         # last vnf, deploy the last link and end this episode
-
-        return self._end_this_episode()
+        else:
+            return self._end_this_episode()
 
     def get_info(self):
         return {
@@ -204,6 +206,7 @@ class NFVEnv(py_environment.PyEnvironment):
         }
 
     def _remove_sfc_run_out(self):
+        #去除那些已经部署超时的sfc
         expiration_times = self._expiration_table.keys()
         for expiration_time in list(expiration_times):
             if(expiration_time <= self._time):
@@ -317,10 +320,10 @@ class NFVEnv(py_environment.PyEnvironment):
             if (last_sfc):
                 self._dep_fin = True
                 self._generate_state()
-                return ts.termination(self._state, reward=fail_reward)
+                return ts.termination(self._state, reward= self._sfc_proc.get_atts()['profit'])
             else:
                 self._generate_state()
-                return ts.transition(self._state, reward=fail_reward)
+                return ts.transition(self._state, reward= self._sfc_proc.get_atts()['profit'])
 
         #  sfc deploy success
         expiration_time = self._time + self._sfc_proc.get_atts()['duration']
