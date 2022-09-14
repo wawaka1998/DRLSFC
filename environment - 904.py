@@ -88,7 +88,6 @@ class NFVEnv(py_environment.PyEnvironment):
         self._sfc_deployed = 0
         self._time = 0
         self._expiration_table = {}#过期时间表，记录着每个每个时间点下会过期的sfc(等待超时)，一旦过期，就会被放弃部署
-
         self._node_last = self.network.get_node(self._sfc_in_node)
         self._node_proc = None
 
@@ -98,37 +97,7 @@ class NFVEnv(py_environment.PyEnvironment):
         self._observation_spec = array_spec.BoundedArraySpec(
             shape=(self._node_num * self._node_num + 3*self._node_num + 4, ), dtype=np.float32, minimum=0.0, name='observation'
         )
-
-        self.network_matrix.generate(self.network)
-
         self._generate_state()          #更新状态
-
-    def _next_sfc(self):
-        # 部署下一个sfc
-        self._sfc_index += 1
-        self._sfc_proc = self.network.sfcs.sfcs[self._sfc_index]  # processing sfc
-        start_time = self._sfc_proc.get_atts()['start_time']
-        self._time_out = False
-        # 超过等待时间的不部署
-        while not self._time <= start_time + wait_time:
-            if self._sfc_index == self.network.sfcs.get_number():
-                return self.reset()
-            self._sfc_index += 1  # 可以跟上一句换换位置，然后就能去掉下面的try except了
-            try:
-                self._sfc_proc = self.network.sfcs.sfcs[self._sfc_index]  # processing sfc
-            except:
-                print(self._sfc_index)
-            start_time = self._sfc_proc.get_atts()['start_time']
-
-        # 没到等待时间的再等一下
-        while not start_time <= self._time:
-            self._remove_sfc_run_out()
-            self._time += 1
-
-        self._sfc_state_refresh()
-        self._episode_ended = False
-        self._generate_state()
-
 
     def action_spec(self):
         return self._action_spec
@@ -138,7 +107,6 @@ class NFVEnv(py_environment.PyEnvironment):
 
     def _reset(self, full_reset=False):
         # 全部sfc部署完成 清空网络开始下一组，重置一下状态
-        print('Deployed {} / {}, clearing'.format(self._sfc_deployed, self.network.sfcs.get_number()))
         self._dep_fin = False#代表所有sfc都已经部署完毕
         self._dep_percent = self._sfc_deployed / self.network.sfcs.get_number()
         # self.scheduler.show()
@@ -148,12 +116,9 @@ class NFVEnv(py_environment.PyEnvironment):
         self.network_matrix = sfcsim.network_matrix()
         self._node_num = self.network.get_number()
         self._node_resource_attr_num = 1
-        self._sfc_index = 0
-        self._sfc_proc = self.network.sfcs.sfcs[self._sfc_index]  # processing sfc
-        self._sfc_deployed = 0
-        self._sfc_state_refresh()
+        self._sfc_index = -1
+        self._next_sfc()
         self._expiration_table = {}
-        self._episode_ended = False
         self._generate_state()#更新状态
         return ts.restart(self._state)
 
@@ -163,47 +128,44 @@ class NFVEnv(py_environment.PyEnvironment):
         #这一块儿看看咋改，记得下一条sfc那里要提前ts.转换状态
         self._remove_sfc_run_out()
         if self._episode_ended:
-            self._next_sfc()
-        if self._dep_fin:
-            self._end_and_reset()
-        self.network_matrix.generate(self.network)#更新newtowrk_matrix矩阵
+            self._episode_ended = True
         self._node_proc = self.network.get_node(self.network_matrix.get_node_list()[action])#将要部署的node
         path = nx.shortest_path(self.network.G, source=self._node_last, target=self._node_proc, weight='delay') #取两个节点间最短路径部署链路(延迟最小)
         delay = nx.shortest_path_length(self.network.G, source=self._node_last, target=self._node_proc, weight='delay')
         self._sfc_delay -= delay
         # 本次_step内,会把这个node部署完成
         if (self._sfc_delay < 0.0):
-            self.scheduler.remove_sfc(self._sfc_proc, self.network)
             if self._time > self._sfc_proc.get_atts()['start_time'] + wait_time:
-                self._episode_ended = True
-                self._generate_state()
-                return ts.transition(self._state, reward = fail_reward)
+                return self._deploy_this_sfc_failed(fail_reward)
             else:
+                self.scheduler.remove_sfc(self._sfc_proc, self.network)
                 self._sfc_state_refresh()#重新开始部署这条sfc
                 self._generate_state()
                 return ts.transition(self._state, reward = 0)
 
         if(self._deploy_node() == False or self._deploy_link(self._sfc_proc,self._vnf_index + 1,path) == False):
-            self._generate_state()
-            return ts.transition(self._state, reward=fail_reward)
+            return self._deploy_this_sfc_failed(fail_reward)
 
-        #改到这里
-        # nf link deploy success,but not the last one of this sfc
+        # nf and link deploy success,but not the last one of this sfc
         if self._vnf_index < len(self._vnf_list) - 1:
             # not last vnf to deploy
+            self._vnf_index += 1
             self._vnf_state_refresh()
             self._generate_state()#节点部署完毕，更新状态
             return ts.transition(self._state, reward=0.0)
-
         # last vnf, deploy the last link and end this episode
-        else:
-            return self._end_this_episode()
+
+        if(self._deploy_final_link() == False):
+            return self._deploy_this_sfc_failed(fail_reward)
+        return self._finish_this_episode_successfully()
 
     def get_info(self):
         return {
-            'dep_fin': self._dep_fin,
+            'dep_'
+            'fin': self._dep_fin,
             'dep_percent': self._dep_percent
         }
+
 
     def _remove_sfc_run_out(self):
         #去除那些已经部署超时的sfc
@@ -215,6 +177,7 @@ class NFVEnv(py_environment.PyEnvironment):
                     self.scheduler.remove_sfc(sfc, self.network)#
 
     def _generate_state(self):
+        self.network_matrix.generate(self.network)
         b = np.array([], dtype=np.float32)
         for i in range(self._node_num-1):#剩余带宽情况
             b = np.append(b, (self.network_matrix.get_edge_att('remain_bandwidth')[i][i+1:]) / max_network_bw)
@@ -248,8 +211,32 @@ class NFVEnv(py_environment.PyEnvironment):
             # 等待，尝试下个回合接着部署
             self._time += 1
             self._remove_sfc_run_out()
+
+    def _next_sfc(self):
+        # 部署下一个sfc,包括刷新状态以及将时间推进到部署时刻
+        self._sfc_index += 1
+        self._sfc_proc = self.network.sfcs.sfcs[self._sfc_index]  # processing sfc
+        start_time = self._sfc_proc.get_atts()['start_time']
+        self._time_out = False
+        # 超过等待时间的不部署
+        while not self._time <= start_time + wait_time:
+            if self._sfc_index == self.network.sfcs.get_number():
+                return self.reset()
+            self._sfc_index += 1  # 可以跟上一句换换位置，然后就能去掉下面的try except了
+            try:
+                self._sfc_proc = self.network.sfcs.sfcs[self._sfc_index]  # processing sfc
+            except:
+                print(self._sfc_index)
+            start_time = self._sfc_proc.get_atts()['start_time']
+
+        # 没到等待时间的再等一下
+        while not start_time <= self._time:
+            self._remove_sfc_run_out()
+            self._time += 1
+        self._sfc_state_refresh()
+
     def _sfc_state_refresh(self):
-        #当需要部署下一条sfc时，对状态进行刷新
+        #对sfc状态进行刷新
         self._sfc_in_node = self._sfc_proc.get_in_node()
         self._sfc_out_node = self._sfc_proc.get_out_node()
         self._vnf_list = self._sfc_proc.get_nfs()  # list of vnfs in order
@@ -258,19 +245,17 @@ class NFVEnv(py_environment.PyEnvironment):
         self._vnf_detail = self._sfc_proc.get_nfs_detail()  # next vnf attr
         self._sfc_bw = self._sfc_proc.get_bandwidths()
         self._sfc_delay = self._sfc_proc.get_delay()  # remaining delay of sfc
-        self.network_matrix.generate(self.network)
         self._node_last = self.network.get_node(self._sfc_in_node)
         self._node_proc = None
     def _vnf_state_refresh(self):
-        self._vnf_index += 1
+        #对vnf状态进行刷新
         self._vnf_proc = self._vnf_list[self._vnf_index]  # next vnf
         self._vnf_detail = self._sfc_proc.get_nfs_detail()  # next vnf attr
-        self.network_matrix.generate(self.network)
         self._node_last = self._node_proc  # 更新last_node
 
-    def _end_and_reset(self):
+    def _print_deploy_result(self):
         print('Deployed {} / {}, clearing'.format(self._sfc_deployed, self.network.sfcs.get_number()))
-        return self.reset()
+
 
     def _deploy_node(self):
         #部署节点,允许等待并再次尝试
@@ -308,34 +293,33 @@ class NFVEnv(py_environment.PyEnvironment):
             return False
         return True
 
-    def _end_this_episode(self):
-        last_sfc = (self._sfc_index == self.network.sfcs.get_number())
-        if not self._deploy_final_link():
-            self.network_matrix.generate(self.network)
-            self._node_last = None
+    def _deploy_this_sfc_failed(self,reward):
+        self.scheduler.remove_sfc(self._sfc_proc, self.network)
+        self._episode_ended = True
+        is_final = (self._sfc_index == self.network.sfcs.get_number())
+        if(is_final):
+            self._dep_fin = True
+            self._print_deploy_result()
+            return ts.termination(self._state, reward)
+        else:
+            self._next_sfc()
             self._generate_state()
-            self._sfc_index += 1
-            self._sfc_deployed += 1
-            self._episode_ended = True
-            if (last_sfc):
-                self._dep_fin = True
-                self._generate_state()
-                return ts.termination(self._state, reward= self._sfc_proc.get_atts()['profit'])
-            else:
-                self._generate_state()
-                return ts.transition(self._state, reward= self._sfc_proc.get_atts()['profit'])
+            return ts.transition(self._state, reward)
 
+    def _finish_this_episode_successfully(self):
+        is_final = (self._sfc_index == self.network.sfcs.get_number())
         #  sfc deploy success
+        self._sfc_deployed += 1
         expiration_time = self._time + self._sfc_proc.get_atts()['duration']
         if not expiration_time in self._expiration_table:
             self._expiration_table[expiration_time] = []
         self._expiration_table[expiration_time].append(self._sfc_proc)
-
-        if (last_sfc):
+        if (is_final):
             self._dep_fin = True
-            self._generate_state()
+            self._print_deploy_result()
             return ts.termination(self._state, reward=self._sfc_proc.get_atts()['profit'])
         else:
+            self._next_sfc()
             self._generate_state()
             return ts.transition(self._state, reward=self._sfc_proc.get_atts()['profit'])
 
@@ -453,8 +437,10 @@ if __name__ == '__main__':
     time_step = init_env.reset()
     step = 0
     while step < 10000 or not time_step.is_last():
-        step += 1
-        time_step, _ = initial_collect_op.run(time_step)#最开始先用随机策略收集一些
+        while not time_step.is_last():
+            step += 1
+            time_step, _ = initial_collect_op.run(time_step)#最开始先用随机策略收集一些
+        init_env.reset()
     # print(replay_buffer.num_frames())
     dataset = replay_buffer.as_dataset(
         num_parallel_calls=num_parallel_calls,
