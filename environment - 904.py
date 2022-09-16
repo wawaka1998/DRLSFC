@@ -48,7 +48,7 @@ from tf_agents.metrics import tf_metrics
 import shelve
 
 
-fail_reward = -3
+fail_reward = 0
 success_reward = 1
 scheduler_log = False
 max_network_bw = 10.0
@@ -66,7 +66,7 @@ class NFVEnv(py_environment.PyEnvironment):
 
     def __init__(self, num_sfc=100):
         super().__init__()
-        self._episode_ended = False #部署完成一条sfc
+        self._sfc_fin = False #部署完成一条sfc
         self._dep_fin = False
         self._dep_percent = 0.0
         self._num_sfc = num_sfc
@@ -119,6 +119,7 @@ class NFVEnv(py_environment.PyEnvironment):
         self._sfc_index = -1
         self._next_sfc()
         self._expiration_table = {}
+        self._sfc_deployed = 0
         self._generate_state()#更新状态
         return ts.restart(self._state)
 
@@ -127,8 +128,8 @@ class NFVEnv(py_environment.PyEnvironment):
         #清理一下旧的sfc
         #这一块儿看看咋改，记得下一条sfc那里要提前ts.转换状态
         self._remove_sfc_run_out()
-        if self._episode_ended:
-            self._episode_ended = True
+        if self._sfc_fin:
+            self._sfc_fin = True
         self._node_proc = self.network.get_node(self.network_matrix.get_node_list()[action])#将要部署的node
         path = nx.shortest_path(self.network.G, source=self._node_last, target=self._node_proc, weight='delay') #取两个节点间最短路径部署链路(延迟最小)
         delay = nx.shortest_path_length(self.network.G, source=self._node_last, target=self._node_proc, weight='delay')
@@ -157,7 +158,7 @@ class NFVEnv(py_environment.PyEnvironment):
 
         if(self._deploy_final_link() == False):
             return self._deploy_this_sfc_failed(fail_reward)
-        return self._finish_this_episode_successfully()
+        return self._deploy_this_sfc_successfully()
 
     def get_info(self):
         return {
@@ -206,7 +207,7 @@ class NFVEnv(py_environment.PyEnvironment):
             # 规定时间内部署不好就去掉整个sfc
             self.scheduler.remove_sfc(self._sfc_proc, self.network)
             self._sfc_index += 1
-            self._episode_ended = True
+            self._sfc_fin = True
         else:
             # 等待，尝试下个回合接着部署
             self._time += 1
@@ -220,7 +221,7 @@ class NFVEnv(py_environment.PyEnvironment):
         self._time_out = False
         # 超过等待时间的不部署
         while not self._time <= start_time + wait_time:
-            if self._sfc_index == self.network.sfcs.get_number():
+            if self._sfc_index == self.network.sfcs.get_number() - 1:
                 return self.reset()
             self._sfc_index += 1  # 可以跟上一句换换位置，然后就能去掉下面的try except了
             try:
@@ -263,7 +264,7 @@ class NFVEnv(py_environment.PyEnvironment):
             if not self.scheduler.deploy_nf_scale_out(self._sfc_proc, self._node_proc, self._vnf_index + 1, self._sfc_proc.get_vnf_types()) :
                 # nf deploy failed
                 self._wait_once()
-                if self._episode_ended:
+                if self._sfc_fin:
                     return False
             else:
                 break
@@ -274,7 +275,7 @@ class NFVEnv(py_environment.PyEnvironment):
             if not self.scheduler.deploy_link(sfc, node_number, self.network, path):
                 # link deploy failed,remove sfc
                 self._wait_once()
-                if self._episode_ended:
+                if self._sfc_fin:
                     return False
             else:
                 break
@@ -295,19 +296,24 @@ class NFVEnv(py_environment.PyEnvironment):
 
     def _deploy_this_sfc_failed(self,reward):
         self.scheduler.remove_sfc(self._sfc_proc, self.network)
-        self._episode_ended = True
-        is_final = (self._sfc_index == self.network.sfcs.get_number())
+        self._sfc_fin = True
+        is_final =  self._sfc_index == (self.network.sfcs.get_number() - 1)
+        a = self.network.sfcs.get_number()
         if(is_final):
             self._dep_fin = True
             self._print_deploy_result()
             return ts.termination(self._state, reward)
         else:
-            self._next_sfc()
-            self._generate_state()
-            return ts.transition(self._state, reward)
+            try:
+                self._next_sfc()
+                self._generate_state()
+                return ts.transition(self._state, reward)
+            except:
+                raise Exception("发生错误,当前的sfc序号为" + self._sfc_index)
 
-    def _finish_this_episode_successfully(self):
-        is_final = (self._sfc_index == self.network.sfcs.get_number())
+
+    def _deploy_this_sfc_successfully(self):
+        is_final = (self._sfc_index == (self.network.sfcs.get_number() - 1))
         #  sfc deploy success
         self._sfc_deployed += 1
         expiration_time = self._time + self._sfc_proc.get_atts()['duration']
@@ -329,8 +335,9 @@ if __name__ == '__main__':
     # environment = NFVEnv()
     # utils.validate_py_environment(environment, episodes=5)
 
-    num_episodes = 100  # @param {type:"integer"}
+    num_deployed = 100  # @param {type:"integer"}
     num_sfc = 1000  #代表要部署多少条sfc
+    num_episodes = 100
 
     initial_collect_steps = 100  # @param {type:"integer"}
     collect_steps_per_iteration = 1  # @param {type:"integer"}
@@ -339,7 +346,7 @@ if __name__ == '__main__':
     batch_size = 64  # @param {type:"integer"}
     shuffle = 32
     learning_rate = 0.0005  # @param {type:"number"}
-    epsilon = 0.2#不按照最大价值函数更新的概率
+    epsilon = 0.1#不按照最大价值函数更新的概率
     target_update_tau = 0.95 #
     target_update_period = 500
     discount_gamma = 0.9
@@ -434,13 +441,12 @@ if __name__ == '__main__':
     )
 
     # initial collect data
-    time_step = init_env.reset()
     step = 0
-    while step < 10000 or not time_step.is_last():
+    while step < 2000 or not time_step.is_last():
+        time_step = init_env.reset()
         while not time_step.is_last():
             step += 1
             time_step, _ = initial_collect_op.run(time_step)#最开始先用随机策略收集一些
-        init_env.reset()
     # print(replay_buffer.num_frames())
     dataset = replay_buffer.as_dataset(
         num_parallel_calls=num_parallel_calls,
@@ -472,37 +478,22 @@ if __name__ == '__main__':
     train_checkpoint.initialize_or_restore()
 
     # main training loop
-    for episode in range(num_episodes): #num_sfc = 100,num_episodes = 100 ; num_itr_per_episode = 200 搞不懂啥逻辑
-        total_loss = 0
+    for episode in range(num_episodes):
         total_reward = 0
-        step_of_episode = 0
         num_deployed = 0
-        while True:
-            time_step = train_env.current_time_step()
-            #部署所有sfc
-            while not time_step.is_last():
-                #直到terminal就结束这一轮
-                # Collect a few steps and save to the replay buffer.
-                time_step, _ = train_driver.run(time_step)
-                # Sample a batch of data from the buffer and update the agent's network.
-                trajectories, _ = next(iterator)
-                train_loss = agent.train(trajectories).loss
-                total_loss += train_loss
-                total_reward += time_step.reward.numpy()[0]
-                step_of_episode += 1
-
-            train_env.reset()
-            info = train_env.pyenv.get_info()
-            if train_env.pyenv.get_info()['dep_fin'][0]:
-                break
-
+        train_env.reset()
+        time_step = train_env.current_time_step()
+        #部署所有sfc
+        while not time_step.is_last():
+            time_step, _ = train_driver.run(time_step)
+            # Sample a batch of data from the buffer and update the agent's network.
+            trajectories, _ = next(iterator)
+            agent.train(trajectories)
+            total_reward += time_step.reward.numpy()[0]
         # save this episode's data
-        train_checkpoint.save(train_step_counter)
-
+        #用excel写
         if episode % log_interval == 0:
-            print('Episode {}, step of this episode: {}, total step: {} ,episode total reward: {}, loss: {}'.format(episode, step_of_episode, agent.train_step_counter.numpy(),total_reward, total_loss / step))
-            tf.summary.scalar('episode total reward', total_reward, step=episode)
-            tf.summary.scalar('episode deployed percent', train_env.pyenv.get_info()['dep_percent'][0], step=episode)
+            print('Episode {} ,episode total reward: {}'.format(episode,total_reward))
 
     train_policy_saver.save(policy_dir)
 

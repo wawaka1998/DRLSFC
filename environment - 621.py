@@ -302,13 +302,10 @@ class NFVEnv(py_environment.PyEnvironment):
 
 if __name__ == '__main__':
 
-    # environment = NFVEnv()
-    # utils.validate_py_environment(environment, episodes=5)
 
     num_episodes = 100  # @param {type:"integer"}
     num_sfc = 1000  #代表要部署多少条sfc
-
-    initial_collect_steps = 100  # @param {type:"integer"}
+    initial_collect_steps = 2000  # @param {type:"integer"}
     collect_steps_per_iteration = 1  # @param {type:"integer"}
     replay_buffer_max_length = 5000  # @param {type:"integer"}
 
@@ -343,12 +340,7 @@ if __name__ == '__main__':
     action_tensor_spec = tensor_spec.from_spec(train_env.action_spec())
     num_actions = action_tensor_spec.maximum - action_tensor_spec.minimum + 1
 
-    train_summary_writer = tf.summary.create_file_writer(log_dir, flush_millis=10000)
-    train_summary_writer.set_as_default()
 
-
-    # Define a helper function to create Dense layers configured with the right
-    # activation and kernel initializer.
     #activation存在于每一个神经元中，输入权值叠加后再通过激活函数输出
     #kernel_initializer指的是每一层的权重的初始化方法，这里是随机均匀分布
     def dense_layer(num_units):
@@ -412,7 +404,7 @@ if __name__ == '__main__':
     # initial collect data
     time_step = init_env.reset()
     step = 0
-    while step < 10000 or not time_step.is_last():
+    while step < initial_collect_steps or not time_step.is_last():
         step += 1
         time_step, _ = initial_collect_op.run(time_step)#最开始先用随机策略收集一些
     # print(replay_buffer.num_frames())
@@ -442,11 +434,10 @@ if __name__ == '__main__':
     )
 
     train_policy_saver = policy_saver.PolicySaver(agent.policy)
-
     train_checkpoint.initialize_or_restore()
 
     # main training loop
-    for episode in range(num_episodes): #num_sfc = 100,num_episodes = 100 ; num_itr_per_episode = 200 搞不懂啥逻辑
+    for episode in range(num_episodes):
         total_loss = 0
         total_reward = 0
         step_of_episode = 0
@@ -479,24 +470,5 @@ if __name__ == '__main__':
             tf.summary.scalar('episode deployed percent', train_env.pyenv.get_info()['dep_percent'][0], step=episode)
 
     train_policy_saver.save(policy_dir)
-
-    def compute_avg_return(environment, policy, num_episodes=10):
-
-        total_return = 0.0
-        for _ in range(num_episodes):
-
-            time_step = environment.reset()
-            episode_return = 0.0
-
-            while not time_step.is_last():
-                action_step = policy.action(time_step)
-                time_step = environment.step(action_step.action)
-                episode_return += time_step.reward
-            total_return += episode_return
-
-        avg_return = total_return / num_episodes
-        return avg_return.numpy()[0]
-
-    # compute_avg_return(eval_env, random_policy, num_eval_episodes)
 
 
