@@ -1,6 +1,6 @@
+
 #这个版本完成了_state中对node_last的添加
 #优化了部分代码（delay处改为 -delay而不是）
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -31,7 +31,7 @@ from tf_agents.utils import common
 
 from tf_agents.drivers import dynamic_step_driver
 from tf_agents.replay_buffers import tf_uniform_replay_buffer
-from tf_agents.policies import py_policy
+from tf_agents.policies import py_policy, py_tf_eager_policy
 from tf_agents.policies import random_py_policy
 from tf_agents.policies import scripted_py_policy
 
@@ -46,7 +46,7 @@ from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.metrics import tf_metric
 from tf_agents.metrics import tf_metrics
 import shelve
-
+from util import outputexcel
 
 fail_reward = 0
 success_reward = 1
@@ -58,9 +58,15 @@ max_nf_bw = 0.5*1.5*5  # max bw*ratio*num
 max_nf_cpu = 3.75*2     # max nf_bw*rec_coef
 max_nf_delay = 10.0
 wait_time = 50
+EXCEL_COL_OF_REWARD = "B"
+EXCEL_COL_OF_DEPLOYED_NUMBER = "C"
+DATE_OF_EXPERIMENT = "9.17"
+
 network_file = shelve.open("./network_file/network")
 network = network_file["cernnet2_1"]
 network_file.close()
+
+
 
 class NFVEnv(py_environment.PyEnvironment):
 
@@ -85,7 +91,7 @@ class NFVEnv(py_environment.PyEnvironment):
         self._vnf_detail = self._sfc_proc.get_nfs_detail()      # next vnf attr
         self._sfc_bw = self._sfc_proc.get_bandwidths()
         self._sfc_delay = self._sfc_proc.get_delay()        # remaining delay of sfc
-        self._sfc_deployed = 0
+        self._sfc_num_deployed = 0
         self._time = 0
         self._expiration_table = {}#过期时间表，记录着每个每个时间点下会过期的sfc(等待超时)，一旦过期，就会被放弃部署
         self._node_last = self.network.get_node(self._sfc_in_node)
@@ -108,7 +114,7 @@ class NFVEnv(py_environment.PyEnvironment):
     def _reset(self, full_reset=False):
         # 全部sfc部署完成 清空网络开始下一组，重置一下状态
         self._dep_fin = False#代表所有sfc都已经部署完毕
-        self._dep_percent = self._sfc_deployed / self.network.sfcs.get_number()
+        self._dep_percent = self._sfc_num_deployed / self.network.sfcs.get_number()
         # self.scheduler.show()
         self._time = 0
         self.network = copy.deepcopy(network)#这样的话就是每次都是同一个网络下部署同一批sfc
@@ -119,7 +125,7 @@ class NFVEnv(py_environment.PyEnvironment):
         self._sfc_index = -1
         self._next_sfc()
         self._expiration_table = {}
-        self._sfc_deployed = 0
+        self._sfc_num_deployed = 0
         self._generate_state()#更新状态
         return ts.restart(self._state)
 
@@ -136,16 +142,11 @@ class NFVEnv(py_environment.PyEnvironment):
         self._sfc_delay -= delay
         # 本次_step内,会把这个node部署完成
         if (self._sfc_delay < 0.0):
-            if self._time > self._sfc_proc.get_atts()['start_time'] + wait_time:
-                return self._deploy_this_sfc_failed(fail_reward)
-            else:
-                self.scheduler.remove_sfc(self._sfc_proc, self.network)
-                self._sfc_state_refresh()#重新开始部署这条sfc
-                self._generate_state()
-                return ts.transition(self._state, reward = 0)
+            return self._failed_in_this_step()
+
 
         if(self._deploy_node() == False or self._deploy_link(self._sfc_proc,self._vnf_index + 1,path) == False):
-            return self._deploy_this_sfc_failed(fail_reward)
+            return self._failed_in_this_step()
 
         # nf and link deploy success,but not the last one of this sfc
         if self._vnf_index < len(self._vnf_list) - 1:
@@ -157,15 +158,9 @@ class NFVEnv(py_environment.PyEnvironment):
         # last vnf, deploy the last link and end this episode
 
         if(self._deploy_final_link() == False):
-            return self._deploy_this_sfc_failed(fail_reward)
-        return self._deploy_this_sfc_successfully()
+            return self._failed_in_this_step()
 
-    def get_info(self):
-        return {
-            'dep_'
-            'fin': self._dep_fin,
-            'dep_percent': self._dep_percent
-        }
+        return self._deploy_this_sfc_successfully()
 
 
     def _remove_sfc_run_out(self):
@@ -203,10 +198,9 @@ class NFVEnv(py_environment.PyEnvironment):
                                       ), dtype=np.float32)
     def _wait_once(self):
         #这个函数需要搭配外层的while(true)使用
-        if self._time > self._sfc_proc.get_atts()['start_time'] + wait_time:
+        if self._time > self._sfc_proc.get_atts()['start_time'] + wait_time  :
             # 规定时间内部署不好就去掉整个sfc
             self.scheduler.remove_sfc(self._sfc_proc, self.network)
-            self._sfc_index += 1
             self._sfc_fin = True
         else:
             # 等待，尝试下个回合接着部署
@@ -255,7 +249,7 @@ class NFVEnv(py_environment.PyEnvironment):
         self._node_last = self._node_proc  # 更新last_node
 
     def _print_deploy_result(self):
-        print('Deployed {} / {}, clearing'.format(self._sfc_deployed, self.network.sfcs.get_number()))
+        print('Deployed {} / {}, clearing'.format(self._sfc_num_deployed, self.network.sfcs.get_number()))
 
 
     def _deploy_node(self):
@@ -267,7 +261,7 @@ class NFVEnv(py_environment.PyEnvironment):
                 if self._sfc_fin:
                     return False
             else:
-                break
+                return True
 
     def _deploy_link(self,sfc,node_number,path):
         #部署链接，允许等待并再次尝试
@@ -280,6 +274,15 @@ class NFVEnv(py_environment.PyEnvironment):
             else:
                 break
         return True
+
+    def _failed_in_this_step(self):
+        if self._time > self._sfc_proc.get_atts()['start_time'] + wait_time:
+            return self._deploy_this_sfc_failed(fail_reward)
+        else:
+            self.scheduler.remove_sfc(self._sfc_proc, self.network)
+            self._sfc_state_refresh()  # 重新开始部署这条sfc
+            self._generate_state()
+            return ts.transition(self._state, reward=0)
 
     def _deploy_final_link(self):
         self._node_last = self._node_proc
@@ -298,7 +301,6 @@ class NFVEnv(py_environment.PyEnvironment):
         self.scheduler.remove_sfc(self._sfc_proc, self.network)
         self._sfc_fin = True
         is_final =  self._sfc_index == (self.network.sfcs.get_number() - 1)
-        a = self.network.sfcs.get_number()
         if(is_final):
             self._dep_fin = True
             self._print_deploy_result()
@@ -309,13 +311,13 @@ class NFVEnv(py_environment.PyEnvironment):
                 self._generate_state()
                 return ts.transition(self._state, reward)
             except:
-                raise Exception("发生错误,当前的sfc序号为" + self._sfc_index)
+                raise Exception("发生错误,当前的sfc序号为" + str(self._sfc_index))
 
 
     def _deploy_this_sfc_successfully(self):
         is_final = (self._sfc_index == (self.network.sfcs.get_number() - 1))
         #  sfc deploy success
-        self._sfc_deployed += 1
+        self._sfc_num_deployed += 1
         expiration_time = self._time + self._sfc_proc.get_atts()['duration']
         if not expiration_time in self._expiration_table:
             self._expiration_table[expiration_time] = []
@@ -330,11 +332,16 @@ class NFVEnv(py_environment.PyEnvironment):
             return ts.transition(self._state, reward=self._sfc_proc.get_atts()['profit'])
 
 
+    def get_info(self):
+        return {
+            'sfc_num_deployed': self._sfc_num_deployed
+        }
+
+
 if __name__ == '__main__':
 
     # environment = NFVEnv()
     # utils.validate_py_environment(environment, episodes=5)
-
     num_deployed = 100  # @param {type:"integer"}
     num_sfc = 1000  #代表要部署多少条sfc
     num_episodes = 100
@@ -346,7 +353,8 @@ if __name__ == '__main__':
     batch_size = 64  # @param {type:"integer"}
     shuffle = 32
     learning_rate = 0.0005  # @param {type:"number"}
-    epsilon = 0.1#不按照最大价值函数更新的概率
+    max_epsilon = 0.9#包含
+    min_epsilon = 0.1#不包含
     target_update_tau = 0.95 #
     target_update_period = 500
     discount_gamma = 0.9
@@ -373,9 +381,6 @@ if __name__ == '__main__':
     fc_layer_params = (512, 256, 128)
     action_tensor_spec = tensor_spec.from_spec(train_env.action_spec())
     num_actions = action_tensor_spec.maximum - action_tensor_spec.minimum + 1
-
-    train_summary_writer = tf.summary.create_file_writer(log_dir, flush_millis=10000)
-    train_summary_writer.set_as_default()
 
 
     # Define a helper function to create Dense layers configured with the right
@@ -414,12 +419,10 @@ if __name__ == '__main__':
         train_env.action_spec(),
         q_network=q_net,
         optimizer=optimizer,
-        # target_update_tau=target_update_tau,
         target_update_period=target_update_period,
         gamma=discount_gamma,
         td_errors_loss_fn=common.element_wise_squared_loss,
         train_step_counter=train_step_counter)
-
     agent.initialize()
 
     # replay buffer
@@ -439,15 +442,16 @@ if __name__ == '__main__':
         observers=replay_observer,
         num_steps=collect_steps_per_iteration
     )
-
     # initial collect data
+    time_step = init_env.reset()
     step = 0
-    while step < 2000 or not time_step.is_last():
-        time_step = init_env.reset()
-        while not time_step.is_last():
-            step += 1
-            time_step, _ = initial_collect_op.run(time_step)#最开始先用随机策略收集一些
-    # print(replay_buffer.num_frames())
+   # while step < 2000 or not time_step.is_last():
+    while step < 200:
+         #time_step = init_env.reset()
+         #while not time_step.is_last():
+         step += 1
+         time_step, _ = initial_collect_op.run(time_step)#最开始先用随机策略收集一些
+
     dataset = replay_buffer.as_dataset(
         num_parallel_calls=num_parallel_calls,
         sample_batch_size=batch_size,
@@ -456,31 +460,29 @@ if __name__ == '__main__':
     iterator = iter(dataset)#干什么用了？
     # train driver
 
-    train_policy = epsilon_greedy_policy.EpsilonGreedyPolicy(agent.policy, epsilon = epsilon)
-    train_driver = dynamic_step_driver.DynamicStepDriver(
-        train_env,
-        train_policy,
-        observers=replay_observer,
-        num_steps=collect_steps_per_iteration
-    )
+    def update_driver(deploy_percent):
+        epsilon = max_epsilon - (max_epsilon - min_epsilon) * deploy_percent
+        train_driver = dynamic_step_driver.DynamicStepDriver(
+            train_env,
+            epsilon_greedy_policy.EpsilonGreedyPolicy(agent.policy, epsilon = epsilon),
+            observers=replay_observer,
+            num_steps=collect_steps_per_iteration
+        )
+        return train_driver
 
-    train_checkpoint = common.Checkpointer(
-        ckpt_dir=checkpoint_dir,
-        max_to_keep=1,
-        agent=agent,
-        policy=agent.policy,
-        replay_buffer=replay_buffer,
-        global_step=train_step_counter
-    )
-
-    train_policy_saver = policy_saver.PolicySaver(agent.policy)
-
-    train_checkpoint.initialize_or_restore()
+    def output(num_deployed,total_reward):
+        # output to excel
+        outputexcel(DATE_OF_EXPERIMENT, EXCEL_COL_OF_DEPLOYED_NUMBER,str(episode + 3),num_deployed)
+        outputexcel(DATE_OF_EXPERIMENT, EXCEL_COL_OF_REWARD, str(episode + 3), total_reward)
+        print('Episode {} ,episode total reward: {}'.format(episode,total_reward))
 
     # main training loop
+    train_driver = update_driver(0.0)
     for episode in range(num_episodes):
+        if ((episode + 1) % 100 == 0):
+            train_driver = update_driver(deploy_percent = (episode + 1) / num_episodes)
+
         total_reward = 0
-        num_deployed = 0
         train_env.reset()
         time_step = train_env.current_time_step()
         #部署所有sfc
@@ -490,30 +492,15 @@ if __name__ == '__main__':
             trajectories, _ = next(iterator)
             agent.train(trajectories)
             total_reward += time_step.reward.numpy()[0]
+
+
         # save this episode's data
-        #用excel写
+        #用打印以及写入excel
         if episode % log_interval == 0:
-            print('Episode {} ,episode total reward: {}'.format(episode,total_reward))
+            num_deployed = train_env.pyenv.get_info()["sfc_num_deployed"][0]
+            output(num_deployed,total_reward)
 
-    train_policy_saver.save(policy_dir)
 
-    def compute_avg_return(environment, policy, num_episodes=10):
 
-        total_return = 0.0
-        for _ in range(num_episodes):
-
-            time_step = environment.reset()
-            episode_return = 0.0
-
-            while not time_step.is_last():
-                action_step = policy.action(time_step)
-                time_step = environment.step(action_step.action)
-                episode_return += time_step.reward
-            total_return += episode_return
-
-        avg_return = total_return / num_episodes
-        return avg_return.numpy()[0]
-
-    # compute_avg_return(eval_env, random_policy, num_eval_episodes)
 
 

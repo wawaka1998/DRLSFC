@@ -1,5 +1,6 @@
 from openpyxl import load_workbook
 
+EXCEL_PATH = "./实验数据.xlsx"
 
 def compute_avg_return(environment, policy, num_episodes=10):
     total_return = 0.0
@@ -17,16 +18,22 @@ def compute_avg_return(environment, policy, num_episodes=10):
     avg_return = total_return / num_episodes
     return avg_return.numpy()[0]
 
-def output(date:str,
+def outputexcel(date:str,
            col:str,
            row:str,
            val:int,
-           datapath = './实验数据.xlsx'
+           datapath = EXCEL_PATH
            ):
+    """
+
+    :date:实验日期(大约)，用于生成表格名称
+    :col:列，从表格里看应该输出到哪一列
+    :row:行，跟随episode变化
+    :val:值，需要输出的数据值
+    """
     sheet_name = date + '实验数据'
     situation = col + row
     wb = load_workbook(datapath)
     ws1 = wb[sheet_name]
     ws1[situation].value = val
-    cellB2_value = ws1['A2'].value
     wb.save("./实验数据.xlsx")

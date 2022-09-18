@@ -301,8 +301,6 @@ class NFVEnv(py_environment.PyEnvironment):
             self._remove_sfc_run_out()
 
 if __name__ == '__main__':
-
-
     num_episodes = 100  # @param {type:"integer"}
     num_sfc = 1000  #代表要部署多少条sfc
     initial_collect_steps = 2000  # @param {type:"integer"}
@@ -441,7 +439,6 @@ if __name__ == '__main__':
         total_loss = 0
         total_reward = 0
         step_of_episode = 0
-        num_deployed = 0
         while True:
             time_step = train_env.current_time_step()
             #部署所有sfc
