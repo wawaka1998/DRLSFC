@@ -445,12 +445,11 @@ if __name__ == '__main__':
     # initial collect data
     time_step = init_env.reset()
     step = 0
-   # while step < 2000 or not time_step.is_last():
-    while step < 200:
-         #time_step = init_env.reset()
-         #while not time_step.is_last():
-         step += 1
-         time_step, _ = initial_collect_op.run(time_step)#最开始先用随机策略收集一些
+    while step < 10000 or not time_step.is_last():
+         time_step = init_env.reset()
+         while not time_step.is_last():
+            step += 1
+            time_step, _ = initial_collect_op.run(time_step)
 
     dataset = replay_buffer.as_dataset(
         num_parallel_calls=num_parallel_calls,
