@@ -58,8 +58,8 @@ max_nf_bw = 0.5*1.5*5  # max bw*ratio*num
 max_nf_cpu = 3.75*2     # max nf_bw*rec_coef
 max_nf_delay = 10.0
 wait_time = 50
-EXCEL_COL_OF_REWARD = "B"
-EXCEL_COL_OF_DEPLOYED_NUMBER = "C"
+EXCEL_COL_OF_REWARD = "D"
+EXCEL_COL_OF_DEPLOYED_NUMBER = "E"
 DATE_OF_EXPERIMENT = "9.17"
 
 network_file = shelve.open("./network_file/network")
@@ -344,7 +344,7 @@ if __name__ == '__main__':
     # utils.validate_py_environment(environment, episodes=5)
     num_deployed = 100  # @param {type:"integer"}
     num_sfc = 1000  #代表要部署多少条sfc
-    num_episodes = 100
+    num_episodes = 60
 
     initial_collect_steps = 100  # @param {type:"integer"}
     collect_steps_per_iteration = 1  # @param {type:"integer"}
@@ -353,8 +353,8 @@ if __name__ == '__main__':
     batch_size = 64  # @param {type:"integer"}
     shuffle = 32
     learning_rate = 0.0005  # @param {type:"number"}
-    max_epsilon = 0.9#包含
-    min_epsilon = 0.1#不包含
+    max_epsilon = 0.4#包含
+    min_epsilon = 0#不包含
     target_update_tau = 0.95 #
     target_update_period = 500
     discount_gamma = 0.9
@@ -478,7 +478,7 @@ if __name__ == '__main__':
     # main training loop
     train_driver = update_driver(0.0)
     for episode in range(num_episodes):
-        if ((episode + 1) % 100 == 0):
+        if ((episode + 1) % (num_episodes//10) == 0):
             train_driver = update_driver(deploy_percent = (episode + 1) / num_episodes)
 
         total_reward = 0
