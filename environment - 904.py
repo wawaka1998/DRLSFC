@@ -58,8 +58,8 @@ max_nf_bw = 0.5*1.5*5  # max bw*ratio*num
 max_nf_cpu = 3.75*2     # max nf_bw*rec_coef
 max_nf_delay = 10.0
 wait_time = 50
-EXCEL_COL_OF_REWARD = "D"
-EXCEL_COL_OF_DEPLOYED_NUMBER = "E"
+EXCEL_COL_OF_REWARD = "B"
+EXCEL_COL_OF_DEPLOYED_NUMBER = "C"
 DATE_OF_EXPERIMENT = "9.17"
 
 network_file = shelve.open("./network_file/network")
@@ -353,7 +353,7 @@ if __name__ == '__main__':
     batch_size = 64  # @param {type:"integer"}
     shuffle = 32
     learning_rate = 0.0005  # @param {type:"number"}
-    max_epsilon = 0.4#包含
+    max_epsilon = 0.5#包含
     min_epsilon = 0#不包含
     target_update_tau = 0.95 #
     target_update_period = 500
