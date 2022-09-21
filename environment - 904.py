@@ -10,7 +10,6 @@ import os
 import copy
 
 import tensorflow as tf
-import tensorflow_probability as tfp
 import networkx as nx
 import numpy as np
 import tf_agents.metrics.tf_metrics
