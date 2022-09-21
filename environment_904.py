@@ -1,5 +1,5 @@
 
-#这个版本完成了_state中对node_last的添加
+#这个版本完成了_state中对node_last的添加1
 #优化了部分代码（delay处改为 -delay而不是）
 from __future__ import absolute_import
 from __future__ import division
