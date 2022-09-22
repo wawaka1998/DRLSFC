@@ -352,7 +352,7 @@ if __name__ == '__main__':
     batch_size = 64  # @param {type:"integer"}
     shuffle = 32
     learning_rate = 0.0005  # @param {type:"number"}
-    max_epsilon = 0.5#包含
+    max_epsilon = 0.9#包含
     min_epsilon = 0#不包含
     target_update_tau = 0.95 #
     target_update_period = 500
