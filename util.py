@@ -35,5 +35,5 @@ def outputexcel(date:str,
     situation = col + row
     wb = load_workbook(datapath)
     ws1 = wb[sheet_name]
-    ws1[situation].value = val
-    wb.save("./实验数据.xlsx")
+    ws1[situation].value = int(val)
+    wb.save(datapath)
