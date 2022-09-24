@@ -325,7 +325,7 @@ if __name__ == '__main__':
 
     initial_collect_steps = 100  # @param {type:"integer"}
     collect_steps_per_iteration = 1  # @param {type:"integer"}
-    replay_buffer_max_length = 3000  # @param {type:"integer"}
+    replay_buffer_max_length = 300000  # @param {type:"integer"}
 
     batch_size = 64  # @param {type:"integer"}
     shuffle = 32
@@ -425,7 +425,7 @@ if __name__ == '__main__':
 
     replay_buffer = tf_uniform_replay_buffer.TFUniformReplayBuffer(
         agent.collect_data_spec,
-        batch_size=batch_size,
+        batch_size= train_env.batch_size,
         max_length=replay_buffer_max_length)
 
     # Add an observer that adds to the replay buffer:
