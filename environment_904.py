@@ -57,9 +57,9 @@ max_nf_bw = 0.5*1.5*5  # max bw*ratio*num
 max_nf_cpu = 3.75*2     # max nf_bw*rec_coef
 max_nf_delay = 10.0
 wait_time = 50
-EXCEL_COL_OF_REWARD = "J"
-EXCEL_COL_OF_DEPLOYED_NUMBER = "K"
-DATE_OF_EXPERIMENT = "9.17"
+EXCEL_COL_OF_REWARD = "F"
+EXCEL_COL_OF_DEPLOYED_NUMBER = "G"
+DATE_OF_EXPERIMENT = "8.20"
 
 network_file = shelve.open("./network_file/network")
 network = network_file["cernnet2_1"]
@@ -352,8 +352,8 @@ if __name__ == '__main__':
     batch_size = 64  # @param {type:"integer"}
     shuffle = 32
     learning_rate = 0.0005  # @param {type:"number"}
-    max_epsilon = 0.9#包含
-    min_epsilon = 0#不包含
+    max_epsilon = 0.4 #包含
+    min_epsilon = 0.4 #不包含
     target_update_tau = 0.95 #
     target_update_period = 500
     discount_gamma = 0.9
@@ -408,7 +408,6 @@ if __name__ == '__main__':
     q_net = sequential.Sequential(dense_layers + [q_values_layer])
     #adam优化器也是梯度下降的
     optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-
     train_step_counter = tf.compat.v1.train.get_or_create_global_step()
     #train_step_counter = tf.Variable(0)
     #
