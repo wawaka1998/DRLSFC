@@ -386,8 +386,8 @@ if __name__ == '__main__':
     def output(num_deployed, total_reward):
         # output to excel
         outputexcel(DATE_OF_EXPERIMENT, EXCEL_COL_OF_DEPLOYED_NUMBER, str(episode + 3), num_deployed,
-                    datapath="./实验数据_本地.xlsx")
-        outputexcel(DATE_OF_EXPERIMENT, EXCEL_COL_OF_REWARD, str(episode + 3), total_reward, datapath="./实验数据_本地.xlsx")
+                    datapath="./实验数据.xlsx")
+        outputexcel(DATE_OF_EXPERIMENT, EXCEL_COL_OF_REWARD, str(episode + 3), total_reward, datapath="./实验数据.xlsx")
         print('Episode {} ,episode total reward: {}'.format(episode, total_reward))
 
 
@@ -429,6 +429,7 @@ if __name__ == '__main__':
         max_length=replay_buffer_max_length)
 
     # Add an observer that adds to the replay buffer:
+
     replay_observer = [replay_buffer.add_batch]
     random_policy = random_tf_policy.RandomTFPolicy(init_env.time_step_spec(), init_env.action_spec())
 
