@@ -321,7 +321,7 @@ if __name__ == '__main__':
     # utils.validate_py_environment(environment, episodes=5)
     num_deployed = 100  # @param {type:"integer"}
     num_sfc = 1000  # 代表要部署多少条sfc
-    num_episodes = 20
+    num_episodes = 60
 
     initial_collect_steps = 100  # @param {type:"integer"}
     collect_steps_per_iteration = 1  # @param {type:"integer"}
@@ -330,8 +330,8 @@ if __name__ == '__main__':
     batch_size = 64  # @param {type:"integer"}
     shuffle = 32
     learning_rate = 0.0005  # @param {type:"number"}
-    max_epsilon = 0.2  # 包含
-    min_epsilon = 0.2  # 不包含
+    max_epsilon = 0.8  # 包含
+    min_epsilon = 0  # 不包含
     target_update_tau = 0.95  #
     target_update_period = 500
     discount_gamma = 0.9
@@ -459,7 +459,7 @@ if __name__ == '__main__':
     # main training loop
     train_driver = update_driver(0.0)
     for episode in range(num_episodes):
-        if ((episode + 1) % (num_episodes // 10) == 0):
+        if ((episode + 1) % (num_episodes // 40) == 0):
             train_driver = update_driver(deploy_percent=(episode + 1) / num_episodes)
 
         total_reward = 0
