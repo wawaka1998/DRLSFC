@@ -66,7 +66,7 @@ class cernnet2_sfc_dynamic(network):
         for i in range(1, num_sfc+1):
             length = random.randint(3,5)
             vnf_of_sfc = [choice(vnf_list) for _ in range(length)]
-            bandwidth_required = round(random.uniform(0.1,0.5),2)
+            bandwidth_required = round(random.uniform(0.28,0.32),2)
             delay_constraint = round(random.uniform(10.0,18.0),2)
             duration = int(random.uniform(1000,1800))
             start_time = start_times_list[i - 1]

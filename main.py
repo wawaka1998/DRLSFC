@@ -45,7 +45,7 @@ import shelve
 from util import outputexcel
 import heapq
 
-FAIL_REWARD = -2 #这是整个sfc部署失败的惩罚,单步错误的惩罚会降低百分之10
+FAIL_REWARD = -3 #这是整个sfc部署失败的惩罚,单步错误的惩罚会降低百分之10
 scheduler_log = False
 max_network_bw = 10.0
 max_network_delay = 2.0
@@ -54,8 +54,8 @@ max_nf_bw = 0.5 * 1.5 * 5  # max bw*ratio*num
 max_nf_cpu = 3.75 * 2  # max nf_bw*rec_coef
 max_nf_delay = 10.0
 wait_time = 50
-EXCEL_COL_OF_REWARD = "B"
-EXCEL_COL_OF_DEPLOYED_NUMBER = "C"
+EXCEL_COL_OF_REWARD = "E"
+EXCEL_COL_OF_DEPLOYED_NUMBER = "F"
 DATE_OF_EXPERIMENT = "9.26"
 CACULATE_TIME = 0.25
 num_episodes = 100
@@ -66,7 +66,7 @@ min_epsilon = 0  # 不包含
 
 
 network_file = shelve.open("./network_file/network")
-network = network_file["cernnet2_3"]
+network = network_file["cernnet2_4"]
 network_file.close()
 
 if __name__ == '__main__':
@@ -201,10 +201,6 @@ if __name__ == '__main__':
             step += 1
             time_step, _ = initial_collect_op.run(time_step)
             time_step1 = init_env.current_time_step()
-            if(time_step is time_step1) :
-                print("true")
-            else:
-                print("false")
     dataset = replay_buffer.as_dataset(
         num_parallel_calls=num_parallel_calls,
         sample_batch_size=batch_size,
