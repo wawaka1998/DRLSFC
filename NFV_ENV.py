@@ -56,12 +56,9 @@ max_nf_bw = 0.5 * 1.5 * 5  # max bw*ratio*num
 max_nf_cpu = 3.75 * 2  # max nf_bw*rec_coef
 max_nf_delay = 10.0
 wait_time = 50
-EXCEL_COL_OF_REWARD = "B"
-EXCEL_COL_OF_DEPLOYED_NUMBER = "C"
-DATE_OF_EXPERIMENT = "9.23"
 CACULATE_TIME = 0.25
 network_file = shelve.open("./network_file/network")
-network = network_file["cernnet2_3"]
+network = network_file["cernnet2_4"]
 network_file.close()
 class NFVEnv(py_environment.PyEnvironment):
 
