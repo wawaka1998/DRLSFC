@@ -96,7 +96,7 @@ if __name__ == '__main__':
     log_interval = 1  # @param {type:"integer"}
 
     checkpoint_dir = os.path.join('checkpoint/' + datetime.now().strftime("%Y%m%d-%H%M%S"), 'checkpoint')
-    policy_dir = os.path.join('models/' + datetime.now().strftime("%Y%m%d-%H%M%S"), 'policy')
+    policy_dir = os.path.join('./' + datetime.now().strftime("%Y%m%d-%H%M%S"), 'policy')
     log_dir = os.path.join('data/log', datetime.now().strftime("%Y%m%d-%H%M%S"))
 
     train_py_env = NFVEnv()
@@ -194,6 +194,7 @@ if __name__ == '__main__':
     # initial collect data
     time_step = init_env.reset()
     step = 0
+    train_policy_saver = policy_saver.PolicySaver(agent.policy)
     while step < 1000 or not time_step.is_last():
         time_step = init_env.reset()
         while not time_step.is_last():
@@ -233,3 +234,4 @@ if __name__ == '__main__':
         if episode % log_interval == 0:
             num_deployed = train_env.pyenv.get_info()["sfc_num_deployed"][0]
             output(num_deployed, total_reward)
+    train_policy_saver.save(policy_dir)
