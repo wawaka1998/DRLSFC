@@ -45,7 +45,7 @@ import shelve
 from util import outputexcel
 import heapq
 
-FAIL_REWARD = -3 #这是整个sfc部署失败的惩罚,单步错误的惩罚会降低百分之10
+FAIL_REWARD = -2 #这是整个sfc部署失败的惩罚,单步错误的惩罚会降低百分之10
 scheduler_log = False
 max_network_bw = 10.0
 max_network_delay = 2.0
