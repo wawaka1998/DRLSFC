@@ -18,6 +18,9 @@ def compute_avg_return(environment, policy, num_episodes=10):
     avg_return = total_return / num_episodes
     return avg_return.numpy()[0]
 
+
+
+
 def outputexcel(date:str,
            col:str,
            row:str,

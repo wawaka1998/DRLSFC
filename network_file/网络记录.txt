@@ -2,8 +2,10 @@ name 		time		特点
 cernnet2_1  	2022.8.30 	随机生成的网络,start_time u(1200,10000),duration u(1000,1800),
 delay u(5.0,10.0) bandwidth 10,sfc流量范围(0.1,0.5)
 cernnet2_2  	2022.9.24 	随机生成的网络,start_time u(1200,10000),duration u(1000,1800),
-delay u(10.0,18.0) bangdwidth 10,sfc流量范围(0.1,0.5)
+delay u(10.0,18.0) bandwidth 10,sfc流量范围(0.1,0.5)
 cernnet2_3  	2022.9.24 	随机生成的网络,start_time u(1200,10000),duration u(1000,1800),
-delay u(10.0,18.0) bangdwidth 100,sfc流量范围(0.1,0.5)
+delay u(10.0,18.0) bandwidth 100,sfc流量范围(0.1,0.5)
 cernnet2_4  	2022.9.27 	随机生成的网络,start_time u(1200,10000),duration u(1000,1800),
 delay u(10.0,18.0) bandwidth 100,sfc流量范围(0.28,0.32)
+cernnet2_5  	2022.10.7 	随机生成的网络,start_time u(10,10000),duration u(1000,1800),
+delay u(10.0,18.0) bandwidth 10,sfc流量范围(0.48,0.52)

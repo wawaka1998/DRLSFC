@@ -119,7 +119,9 @@ class scheduler():
         for vnf in vnfs:
             if vnf.get_name()==name:
                 for key in resource:
-                    vnf.get_remain_resource()[key]+=resource[key]
+                    #vnf.get_remain_resource()[key]+=resource[key]
+                    vnf.get_atts()[key] -= resource[key]
+                    node.remain_resource[key] += resource[key]
                 return True
         if self.log==True:
             print('log:  ',node.get_id(),'doesn\'t has this type of vnf:',name)

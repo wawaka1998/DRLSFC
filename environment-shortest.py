@@ -38,7 +38,7 @@ from tf_agents.replay_buffers import tf_uniform_replay_buffer
 from tf_agents.metrics import tf_metric
 from tf_agents.metrics import tf_metrics
 import shelve
-from util import output
+from util import outputexcel
 
 
 fail_reward = 0
@@ -53,7 +53,7 @@ max_nf_delay = 10.0
 wait_time = 50
 sfc_nums = 1000
 network_file = shelve.open("./network_file/network")
-network = network_file["cernnet2_1"]
+network = network_file["cernnet2_5"]
 network_file.close()
 
 class NFVEnv(py_environment.PyEnvironment):
@@ -393,9 +393,8 @@ if __name__ == '__main__':
         train_checkpoint.save(train_step_counter)
         if episode % log_interval == 0:
             print('Episode {}, step of this episode: {}, total step: {} ,episode total reward: {}, loss: {}'.format(episode, step_of_episode, agent.train_step_counter.numpy(),total_reward, total_loss / step))
-            output('8.20','A',str(episode+3),episode)
             info = train_env.pyenv.get_info()
-            output('8.20','E',str(episode+3),train_env.pyenv.get_info()['sfc_deployed'][0])
+            print("已部署的sfc条数为:" + str(info['sfc_deployed'][0]))
         train_env.reset()
     #train_policy_saver.save(policy_dir)
 

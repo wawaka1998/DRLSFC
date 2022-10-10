@@ -1,7 +1,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-from DEPLOY_ENV import NFVEnv
+from DEPLOY_ENV import DEPLOY_ENV
 import abc
 import os
 import copy
@@ -54,19 +54,19 @@ max_nf_bw = 0.5 * 1.5 * 5  # max bw*ratio*num
 max_nf_cpu = 3.75 * 2  # max nf_bw*rec_coef
 max_nf_delay = 10.0
 wait_time = 50
-EXCEL_COL_OF_REWARD = "E"
-EXCEL_COL_OF_DEPLOYED_NUMBER = "F"
-DATE_OF_EXPERIMENT = "9.26"
+EXCEL_COL_OF_REWARD = "B"
+EXCEL_COL_OF_DEPLOYED_NUMBER = "C"
+DATE_OF_EXPERIMENT = "10.10"
 CACULATE_TIME = 0.25
 num_episodes = 100
-max_epsilon = 0.6  # 包含
+max_epsilon = 0.9 # 包含
 min_epsilon = 0  # 不包含
-
+discount_gamma = 0.9995
 
 
 
 network_file = shelve.open("./network_file/network")
-network = network_file["cernnet2_4"]
+network_and_sfc = network_file["cernnet2_5"]
 network_file.close()
 
 if __name__ == '__main__':
@@ -86,7 +86,7 @@ if __name__ == '__main__':
     learning_rate = 0.0005  # @param {type:"number"}
     target_update_tau = 0.95  #
     target_update_period = 500
-    discount_gamma = 0.9
+
 
     num_parallel_calls = 8
     num_prefetch = batch_size
@@ -99,9 +99,9 @@ if __name__ == '__main__':
     policy_dir = os.path.join('./' + datetime.now().strftime("%Y%m%d-%H%M%S"), 'policy')
     log_dir = os.path.join('data/log', datetime.now().strftime("%Y%m%d-%H%M%S"))
 
-    train_py_env = NFVEnv()
-    eval_py_env = NFVEnv()
-    init_py_env = NFVEnv()
+    train_py_env = DEPLOY_ENV(network_and_sfc = network_and_sfc)
+    eval_py_env = DEPLOY_ENV(network_and_sfc = network_and_sfc)
+    init_py_env = DEPLOY_ENV(network_and_sfc = network_and_sfc)
 
     train_env = tf_py_environment.TFPyEnvironment(train_py_env)
     eval_env = tf_py_environment.TFPyEnvironment(eval_py_env)
@@ -162,6 +162,9 @@ if __name__ == '__main__':
     # train_step_counter = tf.Variable(0)
     #
 
+    def DEPLOY_ENV_action_constraint(observation):
+        return observation['state'], observation['available_action']
+
     agent = dqn_agent.DqnAgent(
         train_env.time_step_spec(),
         train_env.action_spec(),
@@ -170,7 +173,9 @@ if __name__ == '__main__':
         target_update_period=target_update_period,
         gamma=discount_gamma,
         td_errors_loss_fn=common.element_wise_squared_loss,
-        train_step_counter=train_step_counter)
+        train_step_counter=train_step_counter,
+        observation_and_action_constraint_splitter = DEPLOY_ENV_action_constraint
+    )
     agent.initialize()
 
     # replay buffer
@@ -194,13 +199,13 @@ if __name__ == '__main__':
     # initial collect data
     time_step = init_env.reset()
     step = 0
-    train_policy_saver = policy_saver.PolicySaver(agent.policy)
     while step < 1000 or not time_step.is_last():
+    #while step < 1000:
         time_step = init_env.reset()
+        #while step < 1000:
         while not time_step.is_last():
             step += 1
             time_step, _ = initial_collect_op.run(time_step)
-            time_step1 = init_env.current_time_step()
     dataset = replay_buffer.as_dataset(
         num_parallel_calls=num_parallel_calls,
         sample_batch_size=batch_size,
@@ -210,11 +215,11 @@ if __name__ == '__main__':
     # train driver
 
     # main training loop
+    train_policy_saver = policy_saver.PolicySaver(agent.policy)
     train_driver = update_driver(0.0)
     for episode in range(num_episodes):
         if ((episode + 1) % (num_episodes // 40) == 0):
             train_driver = update_driver(deploy_percent=(episode + 1) / num_episodes)
-
         total_reward = 0
         train_env.reset()
         time_step = train_env.current_time_step()
@@ -222,6 +227,7 @@ if __name__ == '__main__':
         while not time_step.is_last():
             time_step, _ = train_driver.run(time_step)
             # Sample a batch of data from the buffer and update the agent's network.
+            total_reward += time_step.reward.numpy()[0]
             trajectories, _ = next(iterator)
             agent.train(trajectories)
 
