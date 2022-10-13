@@ -79,17 +79,17 @@ class cernnet2_sfc_dynamic(network):
         self.figure=''
 
     def generate_edges(self):
-        self.add_edges([[self.node1,self.node2,{'bandwidth':10}],[self.node2,self.node3,{'bandwidth':10}],\
-                        [self.node3,self.node4,{'bandwidth':10}],[self.node3,self.node5,{'bandwidth':10}],\
-                        [self.node5,self.node6,{'bandwidth':10}],[self.node5,self.node7,{'bandwidth':10}],\
-                        [self.node5,self.node9,{'bandwidth':10}],[self.node5,self.node16,{'bandwidth':10}],\
-                        [self.node6,self.node8,{'bandwidth':10}],[self.node7,self.node9,{'bandwidth':10}],\
-                        [self.node8,self.node12,{'bandwidth':10}],[self.node9,self.node10,{'bandwidth':10}],\
-                        [self.node10,self.node11,{'bandwidth':10}],[self.node12,self.node13,{'bandwidth':10}],\
-                        [self.node12,self.node14,{'bandwidth':10}],[self.node13,self.node15,{'bandwidth':10}],\
-                        [self.node14,self.node16,{'bandwidth':10}],[self.node15,self.node20,{'bandwidth':10}],\
-                        [self.node16,self.node17,{'bandwidth':10}],[self.node16,self.node19,{'bandwidth':10}],\
-                        [self.node16,self.node21,{'bandwidth':10}],[self.node17,self.node18,{'bandwidth':10}],[self.node20,self.node21,{'bandwidth':10}]])
+        self.add_edges([[self.node1,self.node2,{'bandwidth':20}],[self.node2,self.node3,{'bandwidth':20}],\
+                        [self.node3,self.node4,{'bandwidth':20}],[self.node3,self.node5,{'bandwidth':20}],\
+                        [self.node5,self.node6,{'bandwidth':20}],[self.node5,self.node7,{'bandwidth':20}],\
+                        [self.node5,self.node9,{'bandwidth':20}],[self.node5,self.node16,{'bandwidth':20}],\
+                        [self.node6,self.node8,{'bandwidth':20}],[self.node7,self.node9,{'bandwidth':20}],\
+                        [self.node8,self.node12,{'bandwidth':20}],[self.node9,self.node10,{'bandwidth':20}],\
+                        [self.node10,self.node11,{'bandwidth':20}],[self.node12,self.node13,{'bandwidth':20}],\
+                        [self.node12,self.node14,{'bandwidth':20}],[self.node13,self.node15,{'bandwidth':20}],\
+                        [self.node14,self.node16,{'bandwidth':20}],[self.node15,self.node20,{'bandwidth':20}],\
+                        [self.node16,self.node17,{'bandwidth':20}],[self.node16,self.node19,{'bandwidth':20}],\
+                        [self.node16,self.node21,{'bandwidth':20}],[self.node17,self.node18,{'bandwidth':20}],[self.node20,self.node21,{'bandwidth':20}]])
     def generate_nodes_atts(self,atts=[30, 29, 28, 27, 27, 27, 26, 22, 22, 20, 19, 17, 16, 16, 14, 14, 13, 13, 12, 11, 10]):
         nodes=[5,16,21,3,12,13,10,1,2,4,6,7,8,9,11,14,15,17,18,19,20]
         if len(atts)==len(nodes):

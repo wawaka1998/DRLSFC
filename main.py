@@ -56,7 +56,7 @@ max_nf_delay = 10.0
 wait_time = 50
 EXCEL_COL_OF_REWARD = "B"
 EXCEL_COL_OF_DEPLOYED_NUMBER = "C"
-DATE_OF_EXPERIMENT = "10.10"
+DATE_OF_EXPERIMENT = "10.13"
 CACULATE_TIME = 0.25
 num_episodes = 100
 max_epsilon = 0.9 # 包含
@@ -66,7 +66,7 @@ discount_gamma = 0.9995
 
 
 network_file = shelve.open("./network_file/network")
-network_and_sfc = network_file["cernnet2_5"]
+network_and_sfc = network_file["cernnet2_6"]
 network_file.close()
 
 if __name__ == '__main__':
