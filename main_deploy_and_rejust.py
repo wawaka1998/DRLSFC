@@ -1,7 +1,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-from DEPLOY_ENV import DEPLOY_ENV
+from DEPLOY_AND_REJUST_ENV import DEPLOY_AND_REJUST_ENV
 import abc
 import os
 import copy
@@ -62,6 +62,7 @@ num_episodes = 100
 max_epsilon = 0.9 # 包含
 min_epsilon = 0  # 不包含
 discount_gamma = 0.9995
+deploy_policy_dir = "./20221014-195340/policy"
 
 
 
@@ -99,9 +100,9 @@ if __name__ == '__main__':
     policy_dir = os.path.join('./' + datetime.now().strftime("%Y%m%d-%H%M%S"), 'policy')
     log_dir = os.path.join('data/log', datetime.now().strftime("%Y%m%d-%H%M%S"))
 
-    train_py_env = DEPLOY_ENV(network_and_sfc = network_and_sfc)
-    eval_py_env = DEPLOY_ENV(network_and_sfc = network_and_sfc)
-    init_py_env = DEPLOY_ENV(network_and_sfc = network_and_sfc)
+    train_py_env = DEPLOY_AND_REJUST_ENV(network_and_sfc = network_and_sfc)
+    eval_py_env = DEPLOY_AND_REJUST_ENV(network_and_sfc = network_and_sfc)
+    init_py_env = DEPLOY_AND_REJUST_ENV(network_and_sfc = network_and_sfc)
 
     train_env = tf_py_environment.TFPyEnvironment(train_py_env)
     eval_env = tf_py_environment.TFPyEnvironment(eval_py_env)
@@ -124,6 +125,7 @@ if __name__ == '__main__':
                 minval=-0.05, maxval=0.05, seed=None))
 
 
+    # train driver
     def update_driver(deploy_percent):
         epsilon = max_epsilon - (max_epsilon - min_epsilon) * deploy_percent
         train_driver = dynamic_step_driver.DynamicStepDriver(
@@ -162,7 +164,7 @@ if __name__ == '__main__':
     # train_step_counter = tf.Variable(0)
     #
 
-    def DEPLOY_ENV_action_constraint(observation):
+    def DEPLOY_AND_REJUST_ENV_action_constraint(observation):
         return observation['state'], observation['available_action']
 
     agent = dqn_agent.DqnAgent(
@@ -174,7 +176,7 @@ if __name__ == '__main__':
         gamma=discount_gamma,
         td_errors_loss_fn=common.element_wise_squared_loss,
         train_step_counter=train_step_counter,
-        observation_and_action_constraint_splitter = DEPLOY_ENV_action_constraint
+        observation_and_action_constraint_splitter = DEPLOY_AND_REJUST_ENV_action_constraint()
     )
     agent.initialize()
 
@@ -212,7 +214,6 @@ if __name__ == '__main__':
         num_steps=2
     ).shuffle(shuffle).prefetch(num_prefetch)
     iterator = iter(dataset)  # 干什么用了？
-    # train driver
 
     # main training loop
     train_policy_saver = policy_saver.PolicySaver(agent.policy)
@@ -236,4 +237,5 @@ if __name__ == '__main__':
         if episode % log_interval == 0:
             num_deployed = train_env.pyenv.get_info()["sfc_num_deployed"][0]
             output(num_deployed, total_reward)
-    train_policy_saver.save(policy_dir)
+    #train_policy_saver.save(policy_dir)
+    compute_avg_return(eval_env,agent.policy)

@@ -1,5 +1,6 @@
 from openpyxl import load_workbook
-
+import tensorflow as  tf
+from tf_agents.policies import epsilon_greedy_policy
 EXCEL_PATH = "./实验数据.xlsx"
 
 def compute_avg_return(environment, policy, num_episodes=10):
@@ -7,6 +8,7 @@ def compute_avg_return(environment, policy, num_episodes=10):
     for _ in range(num_episodes):
 
         time_step = environment.reset()
+        #time_step = convert_TimeStep(time_step)
         episode_return = 0.0
 
         while not time_step.is_last():
@@ -14,11 +16,13 @@ def compute_avg_return(environment, policy, num_episodes=10):
             time_step = environment.step(action_step.action)
             episode_return += time_step.reward
         total_return += episode_return
+        print(episode_return)
 
     avg_return = total_return / num_episodes
     return avg_return.numpy()[0]
 
-
+def convert_TimeStep(time_step):
+    pass
 
 
 def outputexcel(date:str,
