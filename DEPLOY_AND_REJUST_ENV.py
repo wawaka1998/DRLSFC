@@ -61,7 +61,7 @@ max_nf_delay = 10.0
 wait_time = 50
 CACULATE_TIME = 0.25
 ACTION_CONSTRAIN_NUM = 5
-deploy_policy_dir = "./20221014-195340/policy"
+deploy_policy_dir = "./policies/policy1/policy"
 
 
 class DEPLOY_AND_REJUST_ENV(py_environment.PyEnvironment):
@@ -105,6 +105,7 @@ class DEPLOY_AND_REJUST_ENV(py_environment.PyEnvironment):
             'available_action': array_spec.BoundedArraySpec(shape=(self._node_num + 1,), dtype = np.int32,
                                                             minimum=0, maximum=1, name='available_action')
         }
+        a = 1
 
 
     def action_spec(self):
@@ -133,17 +134,54 @@ class DEPLOY_AND_REJUST_ENV(py_environment.PyEnvironment):
         return ts.restart(observation = self._generate_observation())
 
     def _step(self, action):
+        time_step = ts.transition(observation = self._generate_observation(),reward = 0)
         time_step = self._rejust(action)
         action_step = self._deploy_agent(time_step)
         return self._deploy_step(action_step.action)
 
     def _rejust(self,action):
         #重点,仿造time_step
-        rejust_node = self._get_minimum_node()
-        target_node = 
+        rejust_node = self.network.get_node(self.network_matrix.get_node_list()[action])
+        target_node = self._get_target_node(rejust_node)
         self._move_resource(rejust_node)
 
+    def _check_cpu_used(self,node):
         pass
+    def _get_target_node(self,source):
+        available_nodes = []
+        remain_cpu_resources = self.network_matrix.get_node_atts('cpu')#
+        cpu_used_list = self._check_cpu_used(source)
+
+        for i in range(self._node_num):
+            target_node = self.network.get_node(self.network_matrix.get_node_list()[i])
+            cpu = remain_cpu_resources[i]
+            if (i in self._recent_deployed_node): continue  # 最近部署过，排除
+            if (cpu < cpu_demand): continue  # cpu资源不够，排除
+            delay = nx.shortest_path_length(self.network.G, source=source, target=target_node, weight='delay')
+            traffic = self._sfc_proc.atts['bandwidths'][self._vnf_index]
+            if (self._bandwidth_is_sufficient(source=source, target=target_node, traffic=traffic) == False):
+                continue
+            if (self._vnf_index == len(self._vnf_list) - 1):
+                traffic = self._sfc_proc.atts['bandwidths'][self._vnf_index + 1]
+                if (self._bandwidth_is_sufficient(source=target_node, target=self.network.get_node(self._sfc_out_node),
+                                                  traffic=traffic) == False):
+                    continue
+                delay += nx.shortest_path_length(self.network.G, source=target_node,
+                                                 target=self.network.get_node(self._sfc_out_node), weight='delay')
+            if (delay > self._sfc_delay): continue  # 延迟太高，排除
+            available_node = [i, delay]
+            available_nodes.append(available_node)
+        available_nodes.sort(key=lambda x: x[1], reverse=False)  # top 5 shortest
+        available_actions = []
+        for i in range(actions_num):
+            if (i < len(available_nodes)):
+                available_actions.append(available_nodes[i][0])
+        if (len(available_actions) == 0):
+            available_actions.append(self._node_num)  # action = self._node_num 代表没有可选动作
+        np_available_actions = np.zeros(self._node_num + 1, dtype=np.int32)
+        for action in available_actions:
+            np_available_actions[action] = 1
+        return np_available_actions
 
     def _deploy_step(self,action):
         self._time_passed(CACULATE_TIME)
@@ -186,7 +224,7 @@ class DEPLOY_AND_REJUST_ENV(py_environment.PyEnvironment):
                 for sfc in expiration_sfcs:
                     self.scheduler.remove_sfc(sfc, self.network)  #
 
-    def _get_available_actions(self):
+    def _get_available_deploy_nodes(self, source, actions_num):
         available_nodes = []
         remain_cpu_resources = self.network_matrix.get_node_atts('cpu')
         cpu_demand = self._vnf_detail[self._vnf_proc]['cpu']
@@ -195,9 +233,9 @@ class DEPLOY_AND_REJUST_ENV(py_environment.PyEnvironment):
             cpu = remain_cpu_resources[i]
             if(i in self._recent_deployed_node):continue #最近部署过，排除
             if(cpu < cpu_demand): continue    #cpu资源不够，排除
-            delay = nx.shortest_path_length(self.network.G, source=self._node_last,target = target_node, weight='delay')
+            delay = nx.shortest_path_length(self.network.G, source= source ,target = target_node, weight='delay')
             traffic = self._sfc_proc.atts['bandwidths'][self._vnf_index]
-            if(self._bandwidth_is_sufficient(source = self._node_last,target=target_node,traffic=traffic) == False):
+            if(self._bandwidth_is_sufficient(source =  source,target = target_node,traffic = traffic) == False):
                 continue
             if(self._vnf_index == len(self._vnf_list) - 1):
                 traffic = self._sfc_proc.atts['bandwidths'][self._vnf_index + 1]
@@ -209,7 +247,7 @@ class DEPLOY_AND_REJUST_ENV(py_environment.PyEnvironment):
             available_nodes.append(available_node)
         available_nodes.sort(key = lambda x: x[1], reverse = False)#top 5 shortest
         available_actions = []
-        for i in range(ACTION_CONSTRAIN_NUM):
+        for i in range(actions_num):
             if(i < len(available_nodes)):
                 available_actions.append(available_nodes[i][0])
         if(len(available_actions) == 0):
@@ -244,7 +282,7 @@ class DEPLOY_AND_REJUST_ENV(py_environment.PyEnvironment):
              out_node,
              last_node
              ), dtype=np.float32)
-        available_actions = self._get_available_actions()
+        available_actions = self._get_available_deploy_nodes(self._node_last, ACTION_CONSTRAIN_NUM)
         observation = {'state': state,'available_action':available_actions}
         return observation
 
@@ -410,6 +448,7 @@ class DEPLOY_AND_REJUST_ENV(py_environment.PyEnvironment):
                 rejust_pool.get()
         #node:[-remain_resource,index]
         return rejust_pool
+
 
     def get_info(self):
         return {

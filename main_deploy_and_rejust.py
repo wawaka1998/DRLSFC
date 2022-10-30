@@ -62,7 +62,6 @@ num_episodes = 100
 max_epsilon = 0.9 # 包含
 min_epsilon = 0  # 不包含
 discount_gamma = 0.9995
-deploy_policy_dir = "./20221014-195340/policy"
 
 
 
@@ -176,7 +175,7 @@ if __name__ == '__main__':
         gamma=discount_gamma,
         td_errors_loss_fn=common.element_wise_squared_loss,
         train_step_counter=train_step_counter,
-        observation_and_action_constraint_splitter = DEPLOY_AND_REJUST_ENV_action_constraint()
+        observation_and_action_constraint_splitter = DEPLOY_AND_REJUST_ENV_action_constraint
     )
     agent.initialize()
 
@@ -199,11 +198,12 @@ if __name__ == '__main__':
         num_steps=collect_steps_per_iteration
     )
     # initial collect data
-    time_step = init_env.reset()
+    #time_step = init_env.reset()
+
     step = 0
     while step < 1000 or not time_step.is_last():
     #while step < 100:
-        time_step = init_env.reset()
+        time_step = init_env.current_time_step()
         #while step < 1000:
         while not time_step.is_last():
             step += 1

@@ -44,3 +44,5 @@ def outputexcel(date:str,
     ws1 = wb[sheet_name]
     ws1[situation].value = int(val)
     wb.save(datapath)
+def print_num(num):
+    print(num)

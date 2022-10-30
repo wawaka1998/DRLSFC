@@ -56,11 +56,12 @@ max_nf_delay = 10.0
 wait_time = 50
 EXCEL_COL_OF_REWARD = "B"
 EXCEL_COL_OF_DEPLOYED_NUMBER = "C"
-DATE_OF_EXPERIMENT = "10.13"
+DATE_OF_EXPERIMENT = "10.30"
 CACULATE_TIME = 0.25
 num_episodes = 100
-max_epsilon = 0.9 # 包含
-min_epsilon = 0  # 不包含
+MAX_epsilon = 0.9 # 包含
+MID_epsilon = 0.1
+MIN_epsilon = 0  # 不包含
 discount_gamma = 0.9995
 
 
@@ -124,8 +125,7 @@ if __name__ == '__main__':
                 minval=-0.05, maxval=0.05, seed=None))
 
 
-    def update_driver(deploy_percent):
-        epsilon = max_epsilon - (max_epsilon - min_epsilon) * deploy_percent
+    def update_driver(epsilon):
         train_driver = dynamic_step_driver.DynamicStepDriver(
             train_env,
             epsilon_greedy_policy.EpsilonGreedyPolicy(agent.policy, epsilon=epsilon),
@@ -213,13 +213,24 @@ if __name__ == '__main__':
     ).shuffle(shuffle).prefetch(num_prefetch)
     iterator = iter(dataset)  # 干什么用了？
     # train driver
+    def caculate_epsilon_by_episodes(episode):
+        if(episode < 71):
+            deploy_percent = episode / 70
+            epsilon = MAX_epsilon - (MAX_epsilon - MID_epsilon) * deploy_percent
+        elif(episode < 91):
+            deploy_percent = (episode - 70)/20
+            epsilon = MID_epsilon - (MID_epsilon - MIN_epsilon) * deploy_percent
+        else:
+            episode = MIN_epsilon
+        return epsilon
 
     # main training loop
     train_policy_saver = policy_saver.PolicySaver(agent.policy)
     train_driver = update_driver(0.0)
-    for episode in range(num_episodes):
-        if ((episode + 1) % (num_episodes // 40) == 0):
-            train_driver = update_driver(deploy_percent=(episode + 1) / num_episodes)
+    for episode in range(1,num_episodes + 1):
+        if ( episode  % (num_episodes // 40) == 0):
+            epsilon = caculate_epsilon_by_episodes(episode)
+            train_driver = update_driver(epsilon = epsilon)
         total_reward = 0
         train_env.reset()
         time_step = train_env.current_time_step()
@@ -236,4 +247,5 @@ if __name__ == '__main__':
         if episode % log_interval == 0:
             num_deployed = train_env.pyenv.get_info()["sfc_num_deployed"][0]
             output(num_deployed, total_reward)
+
     train_policy_saver.save(policy_dir)
