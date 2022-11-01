@@ -312,8 +312,8 @@ class DEPLOY_ENV(py_environment.PyEnvironment):
             else:
                 return self._deploy_this_sfc_failed(FAIL_REWARD)
         else:
-            #self.scheduler.remove_sfc(self._sfc_proc, self.network)
-            #self._sfc_state_refresh()  # 重新开始部署这条sfc
+            self.scheduler.remove_sfc(self._sfc_proc, self.network)
+            self._sfc_state_refresh()  # 重新开始部署这条sfc
             if(no_available_action):
                 return ts.transition(observation=self._generate_observation(), reward = 0)
             else:
@@ -358,7 +358,7 @@ class DEPLOY_ENV(py_environment.PyEnvironment):
         is_final = (self._sfc_index == (self.network.sfcs.get_number() - 1))
         #  sfc deploy success
         self._sfc_num_deployed += 1
-        print("sfc" + str(self._sfc_index) + "已部署")
+        print(self._sfc_proc.get_id() + "已部署")
         expiration_time = self._time + self._sfc_proc.get_atts()['duration']
         if not expiration_time in self._expiration_table:
             self._expiration_table[expiration_time] = []

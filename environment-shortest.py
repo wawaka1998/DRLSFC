@@ -53,7 +53,7 @@ max_nf_delay = 10.0
 wait_time = 50
 sfc_nums = 1000
 network_file = shelve.open("./network_file/network")
-network = network_file["cernnet2_5"]
+network = network_file["cernnet2_7"]
 network_file.close()
 
 class NFVEnv(py_environment.PyEnvironment):

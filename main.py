@@ -54,13 +54,13 @@ max_nf_bw = 0.5 * 1.5 * 5  # max bw*ratio*num
 max_nf_cpu = 3.75 * 2  # max nf_bw*rec_coef
 max_nf_delay = 10.0
 wait_time = 50
-EXCEL_COL_OF_REWARD = "B"
-EXCEL_COL_OF_DEPLOYED_NUMBER = "C"
-DATE_OF_EXPERIMENT = "10.30"
+EXCEL_COL_OF_REWARD = "L"
+EXCEL_COL_OF_DEPLOYED_NUMBER = "M"
+DATE_OF_EXPERIMENT = "10.13"
 CACULATE_TIME = 0.25
 num_episodes = 100
-MAX_epsilon = 0.9 # 包含
-MID_epsilon = 0.1
+MAX_epsilon = 0 # 包含
+MID_epsilon = 0
 MIN_epsilon = 0  # 不包含
 discount_gamma = 0.9995
 
@@ -221,7 +221,7 @@ if __name__ == '__main__':
             deploy_percent = (episode - 70)/20
             epsilon = MID_epsilon - (MID_epsilon - MIN_epsilon) * deploy_percent
         else:
-            episode = MIN_epsilon
+            epsilon = MIN_epsilon
         return epsilon
 
     # main training loop

@@ -1,4 +1,7 @@
 import copy
+
+import numpy as np
+
 from sfcsim.classes.network import *
 class scheduler():
     '''
@@ -242,6 +245,7 @@ class scheduler():
         del self.__records[id1]['node']
         other=self.__records.pop(id1)
 #         record.update(other)
+
         return record
     def show(self):
         print('*************    print sfc deployed    **************')
@@ -469,4 +473,89 @@ class dynamic_scheduler(scheduler):
         result=self.custom_process_all(network,self.sfc_records,records)  #对于上面未运行custom_process函数，也可以在这运行一次性处理所有改变sfc函数
         self.T+=1 
         return result
-    
+class deploy_and_rejust_scheduler(scheduler):
+    '''
+    deploy_and_rejust_scheduler类,除了动态部署之外，还提供了重调整功能
+    属性值：
+        __record             记录单前sfc虚拟nf和虚拟链路的部署情况
+        __history_record     记录历史记录
+        __node_occupy_records记录节点占用记录
+        __edge_occupy_records记录边占用记录
+    属性方法：
+        get_record
+        deploy_link
+        remove_link
+    '''
+
+    def __init__(self, log = False):
+        #         scheduler.__init__(self)
+        super(deploy_and_rejust_scheduler, self).__init__(log=log)
+        self.__records = super(deploy_and_rejust_scheduler, self).get_records()
+        self._node_occupy_records = {}
+        self._edge_occupy_records = {}
+        self.sfc_records = {}
+    def get_records(self):
+        return self.__records
+    def get_node_occupy_records(self):
+        return self._node_occupy_records
+    def get_edge_occupy_records(self):
+        return self._edge_occupy_records
+
+    def deploy_link(self,sfc,j,network,nodes):
+        deploy_success = super().deploy_link(sfc,j,network,nodes)
+        if(deploy_success):
+            sfc_id = sfc.get_id()
+            resource = sfc.get_bandwidths()[j - 1]
+            for i in range( len(nodes) - 1) :
+                node1_id = nodes[i].id
+                node2_id = nodes[i + 1].id
+                if(int(node1_id[4:]) < int(node2_id[4:])):
+                    key = node1_id + "_" + node2_id
+                else:
+                    key = node2_id + "_" + node1_id
+                #key = node1_id + "_" + node2_id
+                if (self._edge_occupy_records.__contains__(key) == False):
+                    self._edge_occupy_records[key] = {}
+                self._edge_occupy_records[key][sfc_id + "_" + str(j)] = resource
+            return True
+        else:
+            return False
+    def deploy_nf_scale_out(self,sfc,node,i,vnf_types):
+        #部署第i个vnf
+        deploy_success = super().deploy_nf_scale_out(sfc,node,i,vnf_types)
+        if (deploy_success):
+            node_id = node.get_id()
+            sfc_id = sfc.get_id()
+            name = sfc.get_nfs()[i - 1]
+            resource = sfc.get_nfs_detail()[name]
+            sfc_occupy = {}
+            sfc_occupy[sfc_id] = resource
+            if(self._node_occupy_records.__contains__(node_id) == False):self._node_occupy_records[node_id] = {}
+            self._node_occupy_records[node_id][sfc_id + "_"+ str(i)] = resource
+            return True
+        else:
+            return False
+
+    def remove_link(self,sfc,j,network):
+        nodes = self.__records[sfc.get_id()]['edge'][j]
+        sfc_id = sfc.get_id()
+        for i in range(len(nodes) - 1):
+            node1_id = nodes[i].id
+            node2_id = nodes[i + 1].id
+            if (int(node1_id[4:]) < int(node2_id[4:])):
+                key = node1_id + "_" + node2_id
+            else:
+                key = node2_id + "_" + node1_id
+            #key = node1_id + "_" + node2_id
+            self._edge_occupy_records[key].pop(sfc_id +"_" + str(j))
+        super().remove_link(sfc,j,network)
+    def remove_nf(self,sfc,i):
+        node_id = self.__records[sfc.get_id()]['node'][i].id
+        self._node_occupy_records[node_id].pop(sfc.get_id() + "_" + str(i))
+        super().remove_nf(sfc,i)
+
+
+
+
+
+
