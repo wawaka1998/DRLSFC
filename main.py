@@ -59,9 +59,9 @@ EXCEL_COL_OF_DEPLOYED_NUMBER = "E"
 DATE_OF_EXPERIMENT = "10.30"
 CACULATE_TIME = 0.25
 num_episodes = 110
-MAX_epsilon = 0 # 包含
-MID_epsilon = 0
-MIN_epsilon = 0  # 不包含
+MAX_epsilon = 0.9 # 包含
+MID_epsilon = 0.15
+MIN_epsilon = 0.02  # 不包含
 discount_gamma = 0.9995
 
 
@@ -226,7 +226,7 @@ if __name__ == '__main__':
 
     # main training loop
     train_policy_saver = policy_saver.PolicySaver(agent.policy)
-    train_driver = update_driver(0.0)
+    train_driver = update_driver(epsilon = MAX_epsilon)
     for episode in range(1,num_episodes + 1):
         if ( episode  % (num_episodes // 40) == 0):
             epsilon = caculate_epsilon_by_episodes(episode)
