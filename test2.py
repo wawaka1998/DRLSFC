@@ -65,7 +65,8 @@ agent = dqn_agent.DqnAgent(
     train_step_counter=train_step_counter,
     observation_and_action_constraint_splitter=DEPLOY_ENV_action_constraint
 )
-avg_return = compute_avg_return(eval_env,policy)
+#测试已训练policy
+#avg_return = compute_avg_return(eval_env,policy)
 agent.policy = policy
 agent.initialize()
 
@@ -74,6 +75,7 @@ eval_driver = dynamic_step_driver.DynamicStepDriver(
     epsilon_greedy_policy.EpsilonGreedyPolicy(agent.policy, epsilon = 0)
 )
 
+#测试未训练智能体
 for episode in range(1, 11):
     total_reward = 0
     eval_env.reset()

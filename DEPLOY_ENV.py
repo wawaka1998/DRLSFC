@@ -117,7 +117,7 @@ class DEPLOY_ENV(py_environment.PyEnvironment):
         self._dep_percent = self._sfc_num_deployed / self.network.sfcs.get_number()
         # self.scheduler.show()
         self._time = 0
-        self.network = copy.deepcopy(self._network_and_sfc)  # 这样的话就是每次都是同一个网络下部署同一批sfc
+        self.network = sfcsim.cernnet2_sfc_dynamic(num_sfc = 1000)
         self.scheduler = sfcsim.scheduler(log=scheduler_log)
         self.network_matrix = sfcsim.network_matrix()
         self._node_num = self.network.get_number()
