@@ -312,8 +312,8 @@ class DEPLOY_ENV(py_environment.PyEnvironment):
             else:
                 return self._deploy_this_sfc_failed(FAIL_REWARD)
         else:
-            self.scheduler.remove_sfc(self._sfc_proc, self.network)
-            self._sfc_state_refresh()  # 重新开始部署这条sfc
+            #self.scheduler.remove_sfc(self._sfc_proc, self.network)
+            #self._sfc_state_refresh()  # 重新开始部署这条sfc
             if(no_available_action):
                 return ts.transition(observation=self._generate_observation(), reward = 0)
             else:
