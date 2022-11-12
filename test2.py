@@ -11,14 +11,17 @@ from tf_agents.networks import network, q_network, sequential
 from tf_agents.utils import common
 
 network_file = shelve.open("./network_file/network")
-network_and_sfc = network_file["cernnet2_7"]
+network_and_sfc = network_file["cernnet2_10"]
 network_file.close()
 eval_py_env = DEPLOY_ENV(network_and_sfc = network_and_sfc)
 eval_env = tf_py_environment.TFPyEnvironment(eval_py_env)
-policy_dir = "./policies/policy1/policy"
+policy_dir = "./policies/policy2/policy"
 policy = tf.saved_model.load(policy_dir)
+#测试已训练policy
+avg_return = compute_avg_return(eval_env,policy)
 
 
+#测试未训练的policy
 discount_gamma = 0.9995
 learning_rate = 0.0005
 target_update_tau = 0.95  #
@@ -65,9 +68,8 @@ agent = dqn_agent.DqnAgent(
     train_step_counter=train_step_counter,
     observation_and_action_constraint_splitter=DEPLOY_ENV_action_constraint
 )
-#测试已训练policy
-#avg_return = compute_avg_return(eval_env,policy)
-agent.policy = policy
+
+
 agent.initialize()
 
 eval_driver = dynamic_step_driver.DynamicStepDriver(

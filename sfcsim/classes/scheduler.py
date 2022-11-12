@@ -537,6 +537,7 @@ class deploy_and_rejust_scheduler(scheduler):
             return False
 
     def remove_link(self,sfc,j,network):
+        #移除某个sfc的第j条链
         nodes = self.__records[sfc.get_id()]['edge'][j]
         sfc_id = sfc.get_id()
         for i in range(len(nodes) - 1):
@@ -550,6 +551,7 @@ class deploy_and_rejust_scheduler(scheduler):
             self._edge_occupy_records[key].pop(sfc_id +"_" + str(j))
         super().remove_link(sfc,j,network)
     def remove_nf(self,sfc,i):
+        #移除某个sfc的第i个vnf
         node_id = self.__records[sfc.get_id()]['node'][i].id
         self._node_occupy_records[node_id].pop(sfc.get_id() + "_" + str(i))
         super().remove_nf(sfc,i)

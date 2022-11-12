@@ -14,4 +14,6 @@ delay u(10.0,18.0) bandwidth 20,sfc流量范围(0.48,0.52)
 cernnet2_easy   只有20条sfc,2022.10.13 	随机生成的网络,start_time u(10,10000),duration u(1000,1800),
 delay u(10.0,18.0) bandwidth 20,sfc流量范围(0.48,0.52)
 cernnet2_7  	2022.10.25 	随机生成的网络,start_time u(10,10000),duration u(1000,1800),
-delay u(10.0,18.0) bandwidth 20,sfc流量范围(0.48,0.52)
+delay u(10.0,18.0) bandwidth 20,sfc流量范围(0.48,0.52), sfc的vnf_type不会重复
+cernnet2_10(测试专用)  	2022.10.25 	随机生成的网络,start_time u(10,10000),duration u(1000,1800),
+delay u(10.0,18.0) bandwidth 20,sfc流量范围(0.48,0.52), sfc的vnf_type不会重复

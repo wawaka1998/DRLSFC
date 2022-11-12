@@ -1,6 +1,6 @@
 import shelve
 import sfcsim
-network_index = 7
+network_index = 10
 shelve_file = shelve.open("./network_file/network")
 network_name = "cernnet2_" + str(network_index)
 network = sfcsim.cernnet2_sfc_dynamic(num_sfc = 1000,network_name = network_name)

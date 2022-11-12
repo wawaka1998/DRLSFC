@@ -199,11 +199,11 @@ if __name__ == '__main__':
     # initial collect data
     time_step = init_env.reset()
     step = 0
-    while step < 1000 or not time_step.is_last():
-    #while step < 100:
+    #while step < 1000 or not time_step.is_last():
+    while step < 100:
         time_step = init_env.reset()
-        #while step < 1000:
-        while not time_step.is_last():
+        while step < 100:
+        #while not time_step.is_last():
             step += 1
             time_step, _ = initial_collect_op.run(time_step)
     dataset = replay_buffer.as_dataset(

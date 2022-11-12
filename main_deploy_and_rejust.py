@@ -54,19 +54,20 @@ max_nf_bw = 0.5 * 1.5 * 5  # max bw*ratio*num
 max_nf_cpu = 3.75 * 2  # max nf_bw*rec_coef
 max_nf_delay = 10.0
 wait_time = 50
-EXCEL_COL_OF_REWARD = "B"
-EXCEL_COL_OF_DEPLOYED_NUMBER = "C"
-DATE_OF_EXPERIMENT = "10.13"
+EXCEL_COL_OF_REWARD = "D"
+EXCEL_COL_OF_DEPLOYED_NUMBER = "E"
+DATE_OF_EXPERIMENT = "10.30"
 CACULATE_TIME = 0.25
-num_episodes = 100
-max_epsilon = 0.9 # 包含
-min_epsilon = 0  # 不包含
+num_episodes = 110
+MAX_epsilon = 0.9 # 包含
+MID_epsilon = 0.15
+MIN_epsilon = 0.02  # 不包含
 discount_gamma = 0.9995
 
 
 
 network_file = shelve.open("./network_file/network")
-network_and_sfc = network_file["cernnet2_6"]
+network_and_sfc = network_file["cernnet2_7"]
 network_file.close()
 
 if __name__ == '__main__':
@@ -125,8 +126,7 @@ if __name__ == '__main__':
 
 
     # train driver
-    def update_driver(deploy_percent):
-        epsilon = max_epsilon - (max_epsilon - min_epsilon) * deploy_percent
+    def update_driver(epsilon):
         train_driver = dynamic_step_driver.DynamicStepDriver(
             train_env,
             epsilon_greedy_policy.EpsilonGreedyPolicy(agent.policy, epsilon=epsilon),
@@ -193,7 +193,8 @@ if __name__ == '__main__':
 
     initial_collect_op = dynamic_step_driver.DynamicStepDriver(
         init_env,
-        random_policy,
+        #random_policy,
+        agent.policy,
         observers=replay_observer,
         num_steps=collect_steps_per_iteration
     )
@@ -215,12 +216,25 @@ if __name__ == '__main__':
     ).shuffle(shuffle).prefetch(num_prefetch)
     iterator = iter(dataset)  # 干什么用了？
 
+
+    def caculate_epsilon_by_episodes(episode):
+        if (episode < 71):
+            deploy_percent = episode / 70
+            epsilon = MAX_epsilon - (MAX_epsilon - MID_epsilon) * deploy_percent
+        elif (episode < 91):
+            deploy_percent = (episode - 70) / 20
+            epsilon = MID_epsilon - (MID_epsilon - MIN_epsilon) * deploy_percent
+        else:
+            epsilon = MIN_epsilon
+        return epsilon
+
     # main training loop
     train_policy_saver = policy_saver.PolicySaver(agent.policy)
     train_driver = update_driver(0.0)
     for episode in range(num_episodes):
-        if ((episode + 1) % (num_episodes // 40) == 0):
-            train_driver = update_driver(deploy_percent=(episode + 1) / num_episodes)
+        if ( episode  % (num_episodes // 40) == 0):
+            epsilon = caculate_epsilon_by_episodes(episode)
+            train_driver = update_driver(epsilon = epsilon)
         total_reward = 0
         train_env.reset()
         time_step = train_env.current_time_step()

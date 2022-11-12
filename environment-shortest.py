@@ -53,7 +53,7 @@ max_nf_delay = 10.0
 wait_time = 50
 sfc_nums = 1000
 network_file = shelve.open("./network_file/network")
-network = network_file["cernnet2_7"]
+network = network_file["cernnet2_10"]
 network_file.close()
 
 class NFVEnv(py_environment.PyEnvironment):
@@ -126,7 +126,8 @@ class NFVEnv(py_environment.PyEnvironment):
         self._dep_percent = self._sfc_deployed / self.network.sfcs.get_number()
         # self.scheduler.show()
         self._time = 0
-        self.network = copy.deepcopy(network)  # 这样的话就是每次都是同一个网络下部署同一批sfc
+        self.network = sfcsim.cernnet2_sfc_dynamic(num_sfc=1000)
+        #self.network = copy.deepcopy(network)  # 这样的话就是每次都是同一个网络下部署同一批sfc
         self._p = nx.shortest_path(self.network.G, weight='delay')          #所有节点到所有节点的最短路径集合
         self._delay_list = dict(nx.shortest_path_length(self.network.G, weight='delay')) #所有最短路径的权值集合
         self._sfc_index = 0

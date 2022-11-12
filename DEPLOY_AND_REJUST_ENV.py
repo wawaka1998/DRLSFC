@@ -45,7 +45,8 @@ from tf_agents.metrics import tf_metric
 from tf_agents.metrics import tf_metrics
 import shelve
 from util import outputexcel
-
+import logging
+import sys
 
 
 ALTERNATIVE_NODE_NUM = 5
@@ -59,9 +60,15 @@ max_nf_bw = 0.5 * 1.5 * 5  # max bw*ratio*num
 max_nf_cpu = 3.75 * 2  # max nf_bw*rec_coef
 max_nf_delay = 10.0
 wait_time = 50
+MIN_CPU_RESOURCE = 10
+CPU_WARNING = MIN_CPU_RESOURCE *0.3
+BANDWIDTH = 20
+BANDWIDTH_WARNING = BANDWIDTH * 0.1
 CACULATE_TIME = 0.25
 ACTION_CONSTRAIN_NUM = 5
-deploy_policy_dir = "./policies/policy1/policy"
+REJUST = 1
+DEPLOY = 0
+deploy_policy_dir = "./policies/policy2/policy"
 
 
 class DEPLOY_AND_REJUST_ENV(py_environment.PyEnvironment):
@@ -73,7 +80,7 @@ class DEPLOY_AND_REJUST_ENV(py_environment.PyEnvironment):
         self._network_and_sfc = network_and_sfc
         self.network = copy.deepcopy(self._network_and_sfc)
         self._num_sfc = self.network.sfcs.number
-        self.scheduler = sfcsim.scheduler(log=scheduler_log)
+        self.scheduler = sfcsim.deploy_and_rejust_scheduler(log=scheduler_log)
         self.network_matrix = sfcsim.network_matrix()
         self._node_num = self.network.get_number()
         self._node_resource_attr_num = 1
@@ -121,7 +128,7 @@ class DEPLOY_AND_REJUST_ENV(py_environment.PyEnvironment):
         # self.scheduler.show()
         self._time = 0
         self.network = copy.deepcopy(self._network_and_sfc)  # 这样的话就是每次都是同一个网络下部署同一批sfc
-        self.scheduler = sfcsim.scheduler(log=scheduler_log)
+        self.scheduler = sfcsim.deploy_and_rejust_scheduler(log = scheduler_log)
         self.network_matrix = sfcsim.network_matrix()
         self._node_num = self.network.get_number()
         self._node_resource_attr_num = 1
@@ -129,61 +136,113 @@ class DEPLOY_AND_REJUST_ENV(py_environment.PyEnvironment):
         self._next_not_timeout_sfc()
         self._expiration_table = {}
         self._sfc_num_deployed = 0
-        self._generate_observation()  # 更新状态
         self._recent_deployed_node = []
-        return ts.restart(observation = self._generate_observation())
+        self._rejust_pool = []
+        return ts.restart(observation = self._generate_observation(type = REJUST))
 
     def _step(self, action):
-        time_step = ts.transition(observation = self._generate_observation(),reward = 0)
-        time_step = self._rejust(action)
-        action_step = self._deploy_agent(time_step)
+        #可增加，如果不在rejust_pool跳过
+        if (action != self._node_num):
+            self._rejust(action)
+        time_step = ts.transition(observation = self._get_deploy_observation_as_tensor(), reward = tf.constant([10.]))
+        action_step = self._deploy_agent.action(time_step,())
         return self._deploy_step(action_step.action)
 
     def _rejust(self,action):
         #重点,仿造time_step
         rejust_node = self.network.get_node(self.network_matrix.get_node_list()[action])
-        target_node = self._get_target_node(rejust_node)
-        self._move_resource(rejust_node)
+        while(action in self._rejust_pool):
+            rejust_vnf,target_node = self._get_target_node(rejust_node)
+            if(target_node == None): break
+            self._adjust_resource(rejust_node,target_node,rejust_vnf)
+            self._update_rejust_pool()
 
-    def _check_cpu_used(self,node):
-        pass
+    def _update_rejust_pool(self):
+        #用于确定哪些需要节点需要调整,空余cpu小于MIN_CPU_RESOURCE * 0.3
+        rejust_pool = []
+        remain_cpu_resources = self._get_remain_cpu_resouces()
+        for i in range(self._node_num):
+            if(remain_cpu_resources[i] < CPU_WARNING):
+                rejust_pool.append(i)
+        self._rejust_pool = rejust_pool
+        return rejust_pool
+    #得到资源充足的节点中最近的那一个作为目标节点
     def _get_target_node(self,source):
-        available_nodes = []
-        remain_cpu_resources = self.network_matrix.get_node_atts('cpu')#
-        cpu_used_list = self._check_cpu_used(source)
-
+        def _get_delay_without_source(sfc_id,vnf_number):
+            sfc = self.network.sfcs.get_sfc(sfc_id)
+            deploy_nodes = self.scheduler.get_records()[sfc_id]['node'].copy()
+            num_nfs = len(deploy_nodes)
+            deploy_nodes[0] = self.network.get_node(sfc.get_atts()['in_node'])
+            deploy_nodes[num_nfs + 1] = self.network.get_node(sfc.get_atts()['out_node'])
+            total_delay = 0
+            for node_index in deploy_nodes.keys():
+                if(vnf_number == node_index - 1 or vnf_number == node_index or node_index == num_nfs + 1):continue
+                delay = nx.shortest_path_length(self.network.G, source = deploy_nodes[node_index], target=deploy_nodes[node_index + 1], weight='delay')
+                total_delay += delay
+            return total_delay
+        answer = None
+        remain_cpu_resources = self._get_remain_cpu_resouces()
+        max_vnf = self._get_the_biggest_vnf_of_node(source.id)
+        if(max_vnf == ""):
+            return max_vnf,answer
+        cpu_demand = self.scheduler.get_node_occupy_records()[source.id][max_vnf]['cpu']
+        sfc_id, vnf_number = max_vnf.split("_")
+        adjust_sfc = self.network.sfcs.get_sfc(sfc_id)
+        delay_sum_without_source = _get_delay_without_source(sfc_id,vnf_number)
+        remain_delay = adjust_sfc.get_atts()['delay'] - delay_sum_without_source
+        min_delay = remain_delay
         for i in range(self._node_num):
             target_node = self.network.get_node(self.network_matrix.get_node_list()[i])
-            cpu = remain_cpu_resources[i]
-            if (i in self._recent_deployed_node): continue  # 最近部署过，排除
-            if (cpu < cpu_demand): continue  # cpu资源不够，排除
-            delay = nx.shortest_path_length(self.network.G, source=source, target=target_node, weight='delay')
-            traffic = self._sfc_proc.atts['bandwidths'][self._vnf_index]
-            if (self._bandwidth_is_sufficient(source=source, target=target_node, traffic=traffic) == False):
+            remain_cpu_resource = remain_cpu_resources[i]
+            if (remain_cpu_resource < cpu_demand + CPU_WARNING): continue  # cpu资源不够，排除
+            traffic_last = adjust_sfc.atts['bandwidths'][int(vnf_number) - 1]
+            traffic_next = adjust_sfc.atts['bandwidths'][int(vnf_number)]
+            last_node,next_node = self._get_last_and_next_node(sfc_id,vnf_number)
+            if (self._bandwidth_is_sufficient(source = last_node, target = target_node, traffic = traffic_last * 2 + BANDWIDTH_WARNING) == False):#带宽不足，淘汰
                 continue
-            if (self._vnf_index == len(self._vnf_list) - 1):
-                traffic = self._sfc_proc.atts['bandwidths'][self._vnf_index + 1]
-                if (self._bandwidth_is_sufficient(source=target_node, target=self.network.get_node(self._sfc_out_node),
-                                                  traffic=traffic) == False):
-                    continue
-                delay += nx.shortest_path_length(self.network.G, source=target_node,
-                                                 target=self.network.get_node(self._sfc_out_node), weight='delay')
-            if (delay > self._sfc_delay): continue  # 延迟太高，排除
-            available_node = [i, delay]
-            available_nodes.append(available_node)
-        available_nodes.sort(key=lambda x: x[1], reverse=False)  # top 5 shortest
-        available_actions = []
-        for i in range(actions_num):
-            if (i < len(available_nodes)):
-                available_actions.append(available_nodes[i][0])
-        if (len(available_actions) == 0):
-            available_actions.append(self._node_num)  # action = self._node_num 代表没有可选动作
-        np_available_actions = np.zeros(self._node_num + 1, dtype=np.int32)
-        for action in available_actions:
-            np_available_actions[action] = 1
-        return np_available_actions
+            if (self._bandwidth_is_sufficient(source = target_node , target = next_node, traffic = traffic_next * 2+ BANDWIDTH_WARNING) == False):#带宽不足，淘汰
+                continue
+            delay = nx.shortest_path_length(self.network.G, source = last_node, target=target_node, weight='delay') \
+                    + nx.shortest_path_length(self.network.G, source=target_node, target=next_node, weight='delay')
+            if (delay < min_delay): answer = target_node  # 延迟太高，排除
+        return max_vnf,answer
+    def _adjust_resource(self,rejust_node,target_node,rejust_vnf):
+        def delete_resource_and_record():
+            sfc = self.network.sfcs.get_sfc(sfc_id)
+            self.scheduler.remove_nf(sfc,int(vnf_number))
+            self.scheduler.remove_link(sfc,int(vnf_number),self.network)
+            self.scheduler.remove_link(sfc, int(vnf_number) + 1, self.network)
+        def deploy_new_node():
+            sfc = self.network.sfcs.get_sfc(sfc_id)
+            #self.scheduler.deploy_nf(sfc,target_node,int(vnf_number))
+            self.scheduler.deploy_nf_scale_out(sfc, target_node,int(vnf_number) ,sfc.get_vnf_types())
+            last_node,next_node = self._get_last_and_next_node(sfc_id,vnf_number)
+            self._deploy_link(sfc,int(vnf_number),last_node,target_node)
+            self._deploy_link(sfc, int(vnf_number) + 1,target_node,next_node)
 
+        sfc_id, vnf_number = rejust_vnf.split("_")
+        self.scheduler.log = True
+        delete_resource_and_record()
+        deploy_new_node()
+        self.scheduler.log = False
+    def _get_the_biggest_vnf_of_node(self,node_id):
+        node_occupy = self.scheduler.get_node_occupy_records()[node_id]
+        max = 0
+        max_vnf = ""
+        keys = list(node_occupy.keys())
+        for key in keys:
+            sfc_id, vnf_number = key.split("_")
+            sfc = self.network.sfcs.get_sfc(sfc_id)
+            if(len(self.scheduler.get_records()[sfc_id]['node']) != len(sfc.get_nfs())):
+                continue
+            cpu = node_occupy[key]['cpu']
+            if(cpu > max):
+                max_vnf = key
+                max = cpu
+        return max_vnf
     def _deploy_step(self,action):
+        action = action.numpy()
+        action = action[0]
         self._time_passed(CACULATE_TIME)
         if(action == self._node_num):
             self._time_passed(1)
@@ -192,17 +251,16 @@ class DEPLOY_AND_REJUST_ENV(py_environment.PyEnvironment):
             #没有sfc请求到达
             self._time_passed(1)
             if not self._is_idle():
-                return ts.transition(observation = self._generate_observation(), reward = 0)
+                return ts.transition(observation = self._generate_observation(type = REJUST), reward = 0)
         # 清理一下旧的sfc
         # 这一块儿看看咋改，记得下一条sfc那里要提前ts.转换状态
+
         self._node_proc = self.network.get_node(self.network_matrix.get_node_list()[action])  # 将要部署的node
-        path = nx.shortest_path(self.network.G, source=self._node_last, target=self._node_proc,
-                                weight='delay')  # 取两个节点间最短路径部署链路(延迟最小)
         delay = nx.shortest_path_length(self.network.G, source=self._node_last, target=self._node_proc, weight='delay')
         # 本次_step内,会把这个node部署完成
         if (self._sfc_delay < delay):
             return self._failed_in_this_step()
-        if (self._deploy_node() == False or self._deploy_link(self._sfc_proc, self._vnf_index + 1, path) == False):
+        if (self._deploy_node() == False or self._deploy_link(self._sfc_proc, self._vnf_index + 1, self._node_last,self._node_proc) == False):
             return self._failed_in_this_step()
         if self._vnf_index < len(self._vnf_list) - 1:
             return self._deploy_this_vnf_successfully(delay)
@@ -226,7 +284,7 @@ class DEPLOY_AND_REJUST_ENV(py_environment.PyEnvironment):
 
     def _get_available_deploy_nodes(self, source, actions_num):
         available_nodes = []
-        remain_cpu_resources = self.network_matrix.get_node_atts('cpu')
+        remain_cpu_resources = self._get_remain_cpu_resouces()
         cpu_demand = self._vnf_detail[self._vnf_proc]['cpu']
         for i in range(self._node_num):
             target_node = self.network.get_node(self.network_matrix.get_node_list()[i])
@@ -257,7 +315,7 @@ class DEPLOY_AND_REJUST_ENV(py_environment.PyEnvironment):
             np_available_actions[action] = 1
         return np_available_actions
 
-    def _generate_observation(self):
+    def _generate_observation(self,type = REJUST):
         self.network_matrix.generate(self.network)
         b = np.array([], dtype=np.float32)
         for i in range(self._node_num - 1):  # 剩余带宽情况
@@ -282,8 +340,23 @@ class DEPLOY_AND_REJUST_ENV(py_environment.PyEnvironment):
              out_node,
              last_node
              ), dtype=np.float32)
-        available_actions = self._get_available_deploy_nodes(self._node_last, ACTION_CONSTRAIN_NUM)
-        observation = {'state': state,'available_action':available_actions}
+        if(type == 1):
+            self._update_rejust_pool()
+            rejust_pool = np.zeros(self._node_num + 1,dtype = np.int32)
+            for action in self._rejust_pool:
+                rejust_pool[action] = 1
+            if(len(self._rejust_pool) == 0):
+                rejust_pool[self._node_num] = 1
+            observation = {'state': state,'available_action':rejust_pool}
+        if(type == 0):
+            available_actions = self._get_available_deploy_nodes(source = self._node_last,actions_num = 5)
+            observation = {'state': state, 'available_action': available_actions}
+        return observation
+
+    def _get_deploy_observation_as_tensor(self):
+        observation = self._generate_observation(type = DEPLOY)
+        observation['state'] = tf.convert_to_tensor(np.expand_dims(observation['state'], axis=0))
+        observation['available_action'] = tf.convert_to_tensor(np.expand_dims(observation['available_action'], axis=0))
         return observation
 
     def _next_sfc(self):
@@ -309,13 +382,12 @@ class DEPLOY_AND_REJUST_ENV(py_environment.PyEnvironment):
             return False
 
 
-    def _bandwidth_is_sufficient(self,source,target,traffic):
-        path = nx.shortest_path(self.network.G, source=source, target=target,weight='delay')  # 取两个节点间最短路径部署链路(延迟最小)
+    def _bandwidth_is_sufficient(self,source,target,traffic,path = None):
+        if(path == None):
+            path = nx.shortest_path(self.network.G, source = source, target = target,weight='delay')    # 取两个节点间最短路径部署链路(延迟最小)
         for i in range(len(path) - 1):
-            start = self.network_matrix.node_list.index(path[i].id)
-            end = self.network_matrix.node_list.index(path[i + 1].id)
-            bandwidth = self.network_matrix.edge_atts['remain_bandwidth'][start][end]
-            if bandwidth < traffic:
+            bandwidth1 = self.network.G[path[i]][path[i + 1]]['remain_bandwidth']
+            if bandwidth1 < traffic:
                 return False
         return True
 
@@ -350,8 +422,11 @@ class DEPLOY_AND_REJUST_ENV(py_environment.PyEnvironment):
         else:
             return True
 
-    def _deploy_link(self, sfc, node_number, path):
+    def _deploy_link(self, sfc, node_number, source_node,target_node,path = None):
         # 部署链接，允许等待并再次尝试
+        if(path == None):
+            path = nx.shortest_path(self.network.G, source = source_node, target = target_node,
+                                weight='delay')  # 取两个节点间最短路径部署链路(延迟最小)
         if not self.scheduler.deploy_link(sfc, node_number, self.network, path):
             return False
         else:
@@ -367,18 +442,17 @@ class DEPLOY_AND_REJUST_ENV(py_environment.PyEnvironment):
             #self.scheduler.remove_sfc(self._sfc_proc, self.network)
             #self._sfc_state_refresh()  # 重新开始部署这条sfc
             if(no_available_action):
-                return ts.transition(observation=self._generate_observation(), reward = 0)
+                return ts.transition(observation=self._generate_observation(type = REJUST), reward = 0)
             else:
-                return ts.transition(observation = self._generate_observation(), reward =FAIL_REWARD / 50)
+                return ts.transition(observation = self._generate_observation(type = REJUST), reward =FAIL_REWARD / 50)
 
     def _deploy_final_link(self):
         source = self._node_proc
         target = self.network.get_node(self._sfc_out_node)
-        path = nx.shortest_path(self.network.G, source = source, target = target,
-                                weight='delay')
         delay = nx.shortest_path_length(self.network.G, source = source, target = target,
                                         weight='delay')
-        if self._sfc_delay < delay or self._deploy_link(self._sfc_proc, self._vnf_index + 2, path) == False:
+        if self._sfc_delay < delay or self._deploy_link(self._sfc_proc, self._vnf_index + 2,
+                                                        source_node = source,target_node = target) == False:
             # link deploy failed
             return False
         self._sfc_delay -= delay
@@ -390,11 +464,11 @@ class DEPLOY_AND_REJUST_ENV(py_environment.PyEnvironment):
         if (is_final):
             self._dep_fin = True
             self._print_deploy_result()
-            return ts.termination(observation = self._generate_observation(),reward = reward)
+            return ts.termination(observation = self._generate_observation(type = REJUST),reward = reward)
         else:
             try:
                 self._next_not_timeout_sfc()
-                return ts.transition(observation = self._generate_observation(), reward = reward)
+                return ts.transition(observation = self._generate_observation(type = REJUST), reward = reward)
             except:
                 raise Exception("发生错误,当前的sfc序号为" + str(self._sfc_index))
 
@@ -403,14 +477,14 @@ class DEPLOY_AND_REJUST_ENV(py_environment.PyEnvironment):
         self._sfc_delay -= delay
         self._vnf_index += 1
         self._vnf_state_refresh()
-        return ts.transition(observation = self._generate_observation(), reward=0.0)
+        return ts.transition(observation = self._generate_observation(type = REJUST), reward=0.0)
 
 
     def _deploy_this_sfc_successfully(self):
         is_final = (self._sfc_index == (self.network.sfcs.get_number() - 1))
         #  sfc deploy success
         self._sfc_num_deployed += 1
-        print("sfc" + str(self._sfc_index) + "已部署")
+        print("sfc" + str(self._sfc_index + 1) + "已部署")
         expiration_time = self._time + self._sfc_proc.get_atts()['duration']
         if not expiration_time in self._expiration_table:
             self._expiration_table[expiration_time] = []
@@ -418,10 +492,10 @@ class DEPLOY_AND_REJUST_ENV(py_environment.PyEnvironment):
         if (is_final):
             self._dep_fin = True
             self._print_deploy_result()
-            return ts.termination(observation = self._generate_observation(), reward=self._sfc_proc.get_atts()['profit'])
+            return ts.termination(observation = self._generate_observation(type = REJUST), reward=self._sfc_proc.get_atts()['profit'])
         else:
             self._next_not_timeout_sfc()
-            return ts.transition(observation = self._generate_observation(), reward=self._sfc_proc.get_atts()['profit'])
+            return ts.transition(observation = self._generate_observation(type = REJUST), reward=self._sfc_proc.get_atts()['profit'])
 
     def _time_passed(self,duration):
         self._time += duration
@@ -433,23 +507,22 @@ class DEPLOY_AND_REJUST_ENV(py_environment.PyEnvironment):
             self._recent_deployed_node = []
         self._recent_deployed_node.append(action)
 
-    def _refresh_rejust_pool(self,size = 5,threshold = 3):
-        import queue
-        rejust_pool = queue.PriorityQueue()
-        self.network_matrix.generate(self.network)#需要吗？
-        cpu_resouce_list = self.network_matrix.node_list['cpu']
-        for index in range(self._node_num):
-            remain_resource = cpu_resouce_list[index]
-            if(remain_resource > threshold): continue
-            node = [-remain_resource,index]
-            rejust_pool.put(node)
-            if(len(rejust_pool.queue) > size):
-                #将资源最多的剔除队列
-                rejust_pool.get()
-        #node:[-remain_resource,index]
-        return rejust_pool
+    def _get_last_and_next_node(self,sfc_id,vnf_number):
+        sfc = self.network.sfcs.get_sfc(sfc_id)
+        if (int(vnf_number) > 1):
+            last_node = self.scheduler.get_records()[sfc_id]['node'][int(vnf_number) - 1]
+        else:
+            last_node = self.network.get_node(sfc.get_in_node())
+        if (int(vnf_number) < len(sfc.get_atts()['nfs'])):
+            next_node = self.scheduler.get_records()[sfc_id]['node'][int(vnf_number) + 1]
+        else:
+            next_node = self.network.get_node(sfc.get_out_node())
+        return last_node,next_node
 
-
+    def _get_remain_cpu_resouces(self):
+        self.network_matrix.generate(self.network)
+        remain_cpu_resources = self.network_matrix.get_node_atts('cpu')
+        return remain_cpu_resources
     def get_info(self):
         return {
             'sfc_num_deployed': self._sfc_num_deployed
