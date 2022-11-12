@@ -67,7 +67,7 @@ discount_gamma = 0.9995
 
 
 network_file = shelve.open("./network_file/network")
-network_and_sfc = network_file["cernnet2_7"]
+network_and_sfc = sfcsim.cernnet2_sfc_dynamic(num_sfc=1000)
 network_file.close()
 
 if __name__ == '__main__':
