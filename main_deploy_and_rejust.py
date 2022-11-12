@@ -193,8 +193,8 @@ if __name__ == '__main__':
 
     initial_collect_op = dynamic_step_driver.DynamicStepDriver(
         init_env,
-        #random_policy,
-        agent.policy,
+        random_policy,
+        #agent.policy,
         observers=replay_observer,
         num_steps=collect_steps_per_iteration
     )
